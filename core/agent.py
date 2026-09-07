@@ -1,7 +1,7 @@
 from abc import ABC,abstractmethod
 from typing import Optional
 from .message import Message
-from .llm import AgentsLLM
+from .llm import LLMClient
 from .config import Config
 
 class Agent(ABC):
@@ -10,7 +10,7 @@ class Agent(ABC):
   def __init__(
       self,
       name:str,
-      llm:AgentsLLM,
+      llm:LLMClient,
       system_prompt:Optional[str]=None,
       config:Optional[Config] = None):
     self.name = name

@@ -7,6 +7,7 @@ from tools.tool import (
 
 
 class CalculatorTool(Tool):
+    """Add two numbers."""
 
     def __init__(self):
         super().__init__(

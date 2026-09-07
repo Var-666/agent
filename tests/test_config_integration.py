@@ -6,7 +6,7 @@ from unittest.mock import patch
 from agents.function_calling_agent import FunctionCallingAgent
 from core.agent import Agent
 from core.config import Config
-from core.llm import AgentsLLM
+from core.llm import LLMClient
 from core.message import Message
 from tools.tool import ToolRegistry
 
@@ -70,10 +70,10 @@ class LLMConfigTests(unittest.TestCase):
       temperature=0.35,
       max_tokens=256
     )
-    llm = AgentsLLM(
+    llm = LLMClient(
       config=config,
-      apiKey="test-key",
-      baseUrl="https://example.test/v1",
+      api_key="test-key",
+      base_url="https://example.test/v1",
       timeout=1
     )
 

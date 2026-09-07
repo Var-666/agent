@@ -3,7 +3,7 @@ from core.message import Message
 
 
 class SimpleAgent(Agent):
-    """最简单的 Agent:保存历史并调用 LLM"""
+    """最简单的 Agent：保存历史并调用 LLM。"""
 
     def run(self, input_text: str, **kwargs) -> str:
 

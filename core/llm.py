@@ -5,7 +5,7 @@ from openai import OpenAI
 
 from .config import Config
 
-class AgentsLLM:
+class LLMClient:
   """
     An LLM client.
     It is used to call any service compatible with the OpenAI API and
@@ -15,20 +15,20 @@ class AgentsLLM:
   def __init__(
       self,
       model:Optional[str] = None,
-      apiKey:Optional[str] = None,
-      baseUrl:Optional[str] = None,
+      api_key:Optional[str] = None,
+      base_url:Optional[str] = None,
       timeout:Optional[int] = None,
       config:Optional[Config] = None):
     self.config = config or Config.from_env()
     self.model = model or self.config.default_model
-    apiKey = apiKey or os.getenv("LLM_API_KEY")
-    baseUrl = baseUrl or os.getenv("LLM_BASE_URL")
+    api_key = api_key or os.getenv("LLM_API_KEY")
+    base_url = base_url or os.getenv("LLM_BASE_URL")
     timeout = timeout or int(os.getenv("LLM_TIMEOUT",60))
 
-    if not all([self.model,apiKey,baseUrl,timeout]):
+    if not all([self.model,api_key,base_url,timeout]):
       raise ValueError("The model, API key, and service address must be provided or defined in the .env file.")
 
-    self.client = OpenAI(api_key=apiKey, base_url=baseUrl, timeout=timeout)
+    self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
 
   def _build_request_options(
       self,
