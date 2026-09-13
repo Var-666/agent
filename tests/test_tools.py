@@ -1,26 +1,30 @@
 import unittest
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
 from tools.tool_async_executor import AsyncToolExecutor
-from tools.tool import Tool, ToolCall, ToolParameters, ToolRegistry
+from tools.tool import Tool, ToolCall, ToolRegistry
 from tools.tool_chain_manager import ToolChain, ToolChainManager
+from tools.tool_list.calculator_tool import CalculatorTool
 
 
-class EchoTool(Tool):
+class EchoArguments(BaseModel):
+  model_config = ConfigDict(extra="forbid")
+
+  text:str = Field(description="Text to return")
+
+
+class EchoTool(Tool[EchoArguments]):
 
   def __init__(self):
-    super().__init__("echo","Return the supplied text")
+    super().__init__(
+      "echo",
+      "Return the supplied text",
+      EchoArguments
+    )
 
-  def run(self,arguments):
-    return arguments["text"]
-
-  def get_parameters(self):
-    return [
-      ToolParameters(
-        name="text",
-        type="string",
-        description="Text to return"
-      )
-    ]
+  def run(self,arguments:EchoArguments):
+    return arguments.text
 
 
 class ToolRegistryTests(unittest.TestCase):
@@ -48,6 +52,64 @@ class ToolRegistryTests(unittest.TestCase):
   def test_registry_rejects_non_dictionary_arguments(self):
     with self.assertRaisesRegex(TypeError,"must be a dictionary"):
       self.registry.execute_tool("echo","hello")
+
+  def test_tool_rejects_missing_arguments(self):
+    with self.assertRaises(ValidationError):
+      self.registry.execute_tool("echo",{})
+
+  def test_tool_rejects_invalid_argument_types(self):
+    with self.assertRaises(ValidationError):
+      self.registry.execute_tool("echo",{"text":{"invalid":"value"}})
+
+  def test_tool_rejects_extra_arguments(self):
+    with self.assertRaises(ValidationError):
+      self.registry.execute_tool(
+        "echo",
+        {"text":"hello","unexpected":True}
+      )
+
+  def test_openai_schema_comes_from_arguments_model(self):
+    parameters = EchoTool().to_openai_schema()["function"]["parameters"]
+
+    self.assertEqual(parameters["properties"]["text"]["type"],"string")
+    self.assertEqual(
+      parameters["properties"]["text"]["description"],
+      "Text to return"
+    )
+    self.assertEqual(parameters["required"],["text"])
+    self.assertFalse(parameters["additionalProperties"])
+
+
+class CalculatorToolTests(unittest.TestCase):
+
+  def setUp(self):
+    self.registry = ToolRegistry()
+    self.registry.register_tool(CalculatorTool())
+
+  def test_calculator_accepts_integer_and_float_arguments(self):
+    self.assertEqual(
+      self.registry.execute_tool("calculator",{"a":25,"b":37}),
+      "62"
+    )
+    self.assertEqual(
+      self.registry.execute_tool("calculator",{"a":1.5,"b":2}),
+      "3.5"
+    )
+
+  def test_calculator_rejects_numeric_strings(self):
+    with self.assertRaises(ValidationError):
+      self.registry.execute_tool("calculator",{"a":"25","b":37})
+
+  def test_calculator_rejects_missing_and_extra_arguments(self):
+    invalid_arguments = (
+      {"a":25},
+      {"a":25,"b":37,"operation":"multiply"}
+    )
+
+    for arguments in invalid_arguments:
+      with self.subTest(arguments=arguments):
+        with self.assertRaises(ValidationError):
+          self.registry.execute_tool("calculator",arguments)
 
 
 class AsyncToolExecutorTests(unittest.IsolatedAsyncioTestCase):

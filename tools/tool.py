@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, TypeAlias
+from typing import Any, Callable, Dict, Generic, List, TypeAlias, TypeVar
 
 from pydantic import BaseModel, Field
 
 
 ToolArguments: TypeAlias = Dict[str, Any]
 ToolResult: TypeAlias = str
+ArgumentsModelT = TypeVar("ArgumentsModelT",bound=BaseModel)
 
 
 class ToolCall(BaseModel):
@@ -14,30 +15,31 @@ class ToolCall(BaseModel):
   tool_name: str
   arguments: ToolArguments = Field(default_factory=dict)
 
-class ToolParameters(BaseModel):
-  """tool parameters"""
-
-  name:str
-  type:str
-  description:str
-  required:bool = True
-  default:Any = None
-
-class Tool(ABC):
+class Tool(ABC,Generic[ArgumentsModelT]):
   """tool base class"""
 
-  def __init__(self,name:str,description:str):
+  def __init__(
+      self,
+      name:str,
+      description:str,
+      arguments_model:type[ArgumentsModelT]):
     self.name = name
     self.description = description
+    self.arguments_model = arguments_model
+
+  def invoke(self,arguments:ToolArguments) -> ToolResult:
+    """Validate raw arguments before running the tool."""
+    validated_arguments = self.arguments_model.model_validate(arguments)
+    result = self.run(validated_arguments)
+
+    if not isinstance(result,str):
+      raise TypeError(f"Tool '{self.name}' must return a string")
+
+    return result
 
   @abstractmethod
-  def run(self,arguments:ToolArguments) -> ToolResult:
+  def run(self,arguments:ArgumentsModelT) -> ToolResult:
     """run tool"""
-    pass
-
-  @abstractmethod
-  def get_parameters(self) -> List[ToolParameters]:
-    """get tool parameters"""
     pass
 
   def to_openai_schema(self) -> Dict[str,Any]:
@@ -48,38 +50,12 @@ class Tool(ABC):
         Returns:
           A schema compliant with OpenAI function calling standards
       """
-      parameters = self.get_parameters()
-
-      properties = {}
-      required = []
-
-      for param in parameters:
-        prop = {
-          "type":param.type,
-          "description":param.description
-        }
-
-        if param.default is not None:
-          prop["description"] = f"{param.description} (default: {param.default})"
-
-        if param.type == "array":
-          prop["items"] = {"type":"string"}
-
-        properties[param.name] = prop
-
-        if param.required:
-          required.append(param.name)
-
       return {
         "type":"function",
         "function":{
           "name":self.name,
           "description":self.description,
-          "parameters":{
-            "type":"object",
-            "properties":properties,
-            "required":required
-          }
+          "parameters":self.arguments_model.model_json_schema()
         }
       }
 
@@ -87,10 +63,10 @@ class ToolRegistry:
   """tool registry"""
 
   def __init__(self):
-    self._tools:dict[str,Tool] = {}
+    self._tools:dict[str,Tool[Any]] = {}
     self._functions:dict[str,dict[str,Any]] = {}
 
-  def register_tool(self,tool:Tool):
+  def register_tool(self,tool:Tool[Any]):
     """register tool obj"""
     if tool.name in self._tools:
       print(f"Warning: Tool '{tool.name}' already exists and will be overwritten.")
@@ -135,7 +111,7 @@ class ToolRegistry:
       raise TypeError("Tool arguments must be a dictionary")
 
     if name in self._tools:
-        return self._tools[name].run(arguments.copy())
+        return self._tools[name].invoke(arguments.copy())
 
     if name in self._functions:
         func = self._functions[name]["func"]

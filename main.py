@@ -34,7 +34,7 @@ def main():
     agent = create_agent()
     result = agent.run(DEFAULT_QUESTION)
 
-    print("\n最终回答：")
+    print("\n最终回答:")
     print(result)
 
 

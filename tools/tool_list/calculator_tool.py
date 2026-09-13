@@ -1,40 +1,32 @@
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
+
 from tools.tool import (
     Tool,
-    ToolParameters,
-    ToolArguments,
     ToolResult
 )
 
 
-class CalculatorTool(Tool):
+class CalculatorArguments(BaseModel):
+    """Validated arguments for CalculatorTool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    a: StrictInt | StrictFloat = Field(description="第一个数字")
+    b: StrictInt | StrictFloat = Field(description="第二个数字")
+
+
+class CalculatorTool(Tool[CalculatorArguments]):
     """Add two numbers."""
 
     def __init__(self):
         super().__init__(
             name="calculator",
-            description="执行两个数字的加法"
+            description="执行两个数字的加法",
+            arguments_model=CalculatorArguments
         )
-
-    def get_parameters(self):
-        return [
-            ToolParameters(
-                name="a",
-                type="number",
-                description="第一个数字"
-            ),
-            ToolParameters(
-                name="b",
-                type="number",
-                description="第二个数字"
-            )
-        ]
 
     def run(
         self,
-        arguments: ToolArguments
+        arguments: CalculatorArguments
     ) -> ToolResult:
-
-        a = arguments["a"]
-        b = arguments["b"]
-
-        return str(a + b)
+        return str(arguments.a + arguments.b)

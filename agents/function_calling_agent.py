@@ -115,13 +115,8 @@ class FunctionCallingAgent(Agent):
                     tool_call.function.arguments
                 )
 
-                print(
-                    f"🔧 调用工具: {tool_name}"
-                )
-
-                print(
-                    f"📦 参数: {arguments}"
-                )
+                print(f"🔧 调用工具: {tool_name}")
+                print(f"📦 参数: {arguments}")
 
                 try:
                     result = self.registry.execute_tool(
