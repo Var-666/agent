@@ -1,12 +1,11 @@
 import json
 import time
-
 from pydantic import ValidationError
 
 from core.agent import Agent
 from core.message import Message
+from core.state import AgentState
 from tools.tool import ToolRegistry
-
 
 class FunctionCallingAgent(Agent):
 
@@ -26,8 +25,12 @@ class FunctionCallingAgent(Agent):
         )
 
         self.registry = registry
+        self.state = None
 
     def run(self, input_text: str, **kwargs) -> str:
+
+        # 初始化state
+        self.state = AgentState(task=input_text,status="running")
 
         # 1. 保存用户消息
         self.add_message(
@@ -55,25 +58,34 @@ class FunctionCallingAgent(Agent):
         max_steps = kwargs.get("max_steps", 5)
 
         # 4. Agent Loop
-        for _ in range(max_steps):
+        for step in range(max_steps):
+
+            self.state.step = step + 1
+
+            print(f"\n===== Agent Step {self.state.step} =====")
 
             response = self.llm.call_with_tools(
                 messages=messages,
                 tools=tools,
-                temperature=kwargs.get("temperature", self.config.temperature),
-                max_tokens=kwargs.get("max_tokens", self.config.max_tokens)
+                temperature=kwargs.get("temperature",self.config.temperature),
+                max_tokens=kwargs.get("max_tokens",self.config.max_tokens)
             )
 
             if response is None:
-                return "LLM 调用失败"
+                self.state.status = "failed"
+                self.state.last_error = "LLM 调用失败"
+                return self.state.last_error
 
             # 5. 如果模型没有调用工具
             if not response.tool_calls:
 
+                self.state.status = "completed"
+                self.state.last_error = None
+
                 final_answer = response.content or ""
 
                 self.add_message(
-                    Message(content=final_answer, role="assistant")
+                    Message(content=final_answer,role="assistant")
                 )
 
                 return final_answer
@@ -108,9 +120,8 @@ class FunctionCallingAgent(Agent):
                         tool_call.function.arguments
                     )
                 except json.JSONDecodeError as e:
-                    error_result = (
-                        f"Tool '{tool_name}' 参数 JSON 解析失败: {e}"
-                    )
+                    error_result = (f"Tool '{tool_name}' 参数 JSON 解析失败: {e}")
+                    self.state.last_error = error_result
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
@@ -121,11 +132,15 @@ class FunctionCallingAgent(Agent):
                 print(f"🔧 调用工具: {tool_name}")
                 print(f"📦 参数: {arguments}")
 
-                result = self._execute_tool_with_retry(
-                    tool_name,
-                    arguments,
-                    max_retries=2
-                )
+                self.state.tools_called.append(tool_name)
+
+                result = self._execute_tool_with_retry(tool_name, arguments,2)
+
+                self.state.tool_results.append({
+                    "tool":tool_name,
+                    "arguments":arguments,
+                    "result":result
+                })
 
                 print(f"✅ 工具结果: {result}")
 
@@ -136,39 +151,28 @@ class FunctionCallingAgent(Agent):
                     "content": result
                 })
 
-        return "超过最大工具调用次数"
+        self.state.status = "failed"
+        self.state.last_error = (f"超过最大执行步数: {max_steps}")
 
-    def _execute_tool_with_retry(
-        self,
-        tool_name: str,
-        arguments: dict,
-        max_retries: int = 2
-    ) -> str:
+        return "Agent 未能在最大步骤内完成任务"
+
+    def _execute_tool_with_retry(self,tool_name:str, arguments:dict, max_retries:int = 2)->str:
         for attempt in range(max_retries + 1):
             try:
-                return self.registry.execute_tool(tool_name, arguments)
+                return self.registry.execute_tool(tool_name,arguments)
 
             except ValidationError as e:
-                return f"Tool '{tool_name}' 参数验证失败: {e}"
+                return (f"Tool '{tool_name}' 参数验证失败: " f"{e}")
 
-            except (TimeoutError, ConnectionError) as e:
+            except (TimeoutError,ConnectionError) as e:
                 if attempt < max_retries:
-                    print(
-                        "Tool 临时失败，正在重试 "
-                        f"({attempt + 1}/{max_retries})"
-                    )
+                    print(f"Tool 临时失败，正在重试 " f"({attempt + 1}/{max_retries})")
                     time.sleep(1)
                     continue
-                return (
-                    f"Tool '{tool_name}' 重试后仍失败: "
-                    f"{type(e).__name__}: {e}"
-                )
+                return (f"Tool '{tool_name}' 重试后仍失败: " f"{type(e).__name__}: {e}")
 
             except ValueError as e:
-                return f"Tool '{tool_name}' 调用失败: {e}"
+                return (f"Tool '{tool_name}' 调用失败: " f"{e}")
 
             except Exception as e:
-                return (
-                    f"Tool '{tool_name}' 执行异常: "
-                    f"{type(e).__name__}: {e}"
-                )
+                return (f"Tool '{tool_name}' 执行异常: " f"{type(e).__name__}: {e}")
