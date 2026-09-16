@@ -62,7 +62,7 @@ class FunctionCallingAgent(Agent):
 
             self.state.step = step + 1
 
-            print(f"\n===== Agent Step {self.state.step} =====")
+            print(f"\n========================== Agent Step {self.state.step} ==========================")
 
             response = self.llm.call_with_tools(
                 messages=messages,
@@ -73,6 +73,7 @@ class FunctionCallingAgent(Agent):
 
             if response is None:
                 self.state.status = "failed"
+                self.state.error_count += 1
                 self.state.last_error = "LLM 调用失败"
                 return self.state.last_error
 
@@ -84,10 +85,7 @@ class FunctionCallingAgent(Agent):
 
                 final_answer = response.content or ""
 
-                self.add_message(
-                    Message(content=final_answer,role="assistant")
-                )
-
+                self.add_message(Message(content=final_answer,role="assistant"))
                 return final_answer
 
             # 6. 模型决定调用 Tool
@@ -121,7 +119,10 @@ class FunctionCallingAgent(Agent):
                     )
                 except json.JSONDecodeError as e:
                     error_result = (f"Tool '{tool_name}' 参数 JSON 解析失败: {e}")
+
+                    self.state.error_count += 1
                     self.state.last_error = error_result
+
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
@@ -129,18 +130,43 @@ class FunctionCallingAgent(Agent):
                     })
                     continue
 
+
+
                 print(f"🔧 调用工具: {tool_name}")
                 print(f"📦 参数: {arguments}")
 
-                self.state.tools_called.append(tool_name)
+                cached_result = self._find_cached_tool_result(tool_name,arguments)
 
-                result = self._execute_tool_with_retry(tool_name, arguments,2)
+                if cached_result is not None:
+                    result = cached_result
+                else:
+                    current_count = self.state.tool_call_counts.get(tool_name,0)
+                    max_calls_per_tool = kwargs.get("max_calls_per_tool",3)
 
-                self.state.tool_results.append({
-                    "tool":tool_name,
-                    "arguments":arguments,
-                    "result":result
-                })
+                    if current_count >= max_calls_per_tool:
+                        error_result = f"Tool '{tool_name}' 调用次数达到上限"
+
+                        self.state.error_count += 1
+                        self.state.last_error = error_result
+
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": error_result
+                        })
+
+                        continue
+
+                    self.state.tool_call_counts[tool_name] = current_count + 1
+                    self.state.tools_called.append(tool_name)
+
+                    result = self._execute_tool_with_retry(tool_name, arguments,2)
+
+                    self.state.tool_results.append({
+                        "tool":tool_name,
+                        "arguments":arguments,
+                        "result":result
+                    })
 
                 print(f"✅ 工具结果: {result}")
 
@@ -152,6 +178,7 @@ class FunctionCallingAgent(Agent):
                 })
 
         self.state.status = "failed"
+        self.state.error_count += 1
         self.state.last_error = (f"超过最大执行步数: {max_steps}")
 
         return "Agent 未能在最大步骤内完成任务"
@@ -176,3 +203,11 @@ class FunctionCallingAgent(Agent):
 
             except Exception as e:
                 return (f"Tool '{tool_name}' 执行异常: " f"{type(e).__name__}: {e}")
+
+    def _find_cached_tool_result(self,tool_name:str,arguments:dict)->str | None:
+        """查找完全相同的 Tool 调用是否已经执行过"""
+
+        for record in self.state.tool_results:
+            if (record["tool"] == tool_name and record["arguments"] == arguments):
+                return record["result"]
+        return None

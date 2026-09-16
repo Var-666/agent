@@ -17,4 +17,7 @@ class AgentState(BaseModel):
   
   tools_called:List[str] = Field(default_factory=list)
   tool_results:List[Dict[str,Any]] = Field(default_factory=list)
+  tool_call_counts:Dict[str,int] = Field(default_factory=dict)
+
+  error_count:int = 0
   last_error:Optional[str] = None
