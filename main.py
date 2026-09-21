@@ -6,8 +6,11 @@ from langchain_openai import ChatOpenAI
 from langchain.chat_models import init_chat_model
 from langchain.messages import (HumanMessage,SystemMessage,AIMessage)
 from langchain.tools import tool
+from langgraph.checkpoint.memory import InMemorySaver
 
 load_dotenv()
+
+checkpointer = InMemorySaver()
 
 model = init_chat_model(
     model=os.getenv("LLM_MODEL"),
@@ -16,28 +19,63 @@ model = init_chat_model(
     base_url=os.getenv("LLM_BASE_URL"),
 )
 
+config = {
+  "configurable":{
+    "thread_id":"chat-A"
+  }
+}
 
 @tool
-def get_weather(city: str) -> str:
-    """Get weather for a given city."""
-    return f"{city} 的天气是晴天"
+def get_product_price(product: str) -> float:
+  """查询商品的单价。"""
 
-model_with_tools = model.bind_tools([get_weather])
+  prices = {
+      "MacBook": 10000,
+      "iPhone": 6000,
+  }
 
-messages = [
-    HumanMessage(
-        "北京的天气怎么样？"
-    )
-]
+  return prices.get(product, 0)
 
-ai_message = model_with_tools.invoke(messages)
+@tool
+def multiply(a: float, b: float) -> float:
+  """计算两个数字的乘积。"""
 
-messages.append(ai_message)
+  return a * b
 
-for tool_call in ai_message.tool_calls:
-  tool_result = get_weather.invoke(tool_call)
-  messages.append(tool_result)
 
-final_response = model_with_tools.invoke(messages)
+agent = create_agent(
+  model=model,
+  tools=[
+      get_product_price,
+      multiply,
+  ],
+  system_prompt="你是一个购物助手，需要使用工具获取商品价格并完成计算。",
+  checkpointer=checkpointer
+)
 
-print(final_response.text)
+
+result = agent.invoke({
+  "messages": [
+      {
+          "role": "user",
+          "content": "买 3 台 MacBook 一共多少钱？"
+      }
+    ]
+  },
+  config
+)
+
+print(result["messages"][-1].content)
+
+result = agent.invoke({
+  "messages": [
+      {
+          "role": "user",
+          "content": "在前面3台macbook的前提下,那我再买 2 台 iPhone 一共多少钱？"
+      }
+    ]
+  },
+  config
+)
+
+print(result["messages"][-1].content)
