@@ -984,7 +984,6 @@ agent/
 │       │   ├── task.py
 │       │   ├── run.py
 │       │   └── artifact.py
-│       └── main.py
 │
 ├── tests/
 │   ├── test_goal.py
@@ -999,7 +998,9 @@ agent/
 ├── .env.example
 ├── pyproject.toml
 ├── README.md
-└── FLOWAGENT_PROJECT.md
+└── docs/
+    ├── FLOWAGENT_PROJECT.md
+    └── 学习路线.md
 ```
 
 后续模块在对应版本真正需要时再创建，例如：
@@ -1018,7 +1019,7 @@ evals/
 
 不要在 v0.1 预先创建全部空目录。
 
-当前根目录的 `main.py` 是学习 `create_agent`、Tool Calling 和 `InMemorySaver` 的历史示例，与 v0.1 Domain Foundation 的产品边界不一致。开始 v0.1 实现时，应将它保留并移入 `examples/learning/agent_memory_demo.py`，而不是删除学习证据或把示例逻辑混入 `src/flow_agent`。
+原根目录的 `main.py` 是学习 `create_agent`、Tool Calling 和 `InMemorySaver` 的历史示例，与 v0.1 Domain Foundation 的产品边界不一致。该示例现已归档到 `examples/learning/agent_memory_demo.py`，不与产品代码混放。
 
 ---
 
@@ -1181,7 +1182,7 @@ Single Agent + Tools + Skills + Middleware + LangGraph
 
 Codex 在修改项目代码前必须遵循以下规则：
 
-1. 先阅读本文件和当前 `学习路线.md`。
+1. 先阅读 `docs/FLOWAGENT_PROJECT.md` 和 `docs/学习路线.md`。
 2. 明确当前项目版本 / milestone。
 3. 只实现当前 milestone 需要的能力。
 4. 不提前引入未来模块，除非当前实现确实无法继续且有明确理由。
@@ -1217,7 +1218,7 @@ Codex 在修改项目代码前必须遵循以下规则：
 - [ ] pytest 测试
 - [ ] `.env.example`
 - [ ] README 最小运行说明
-- [ ] 将现有 Agent 学习代码归档到 `examples/learning/`
+- [x] 将现有 Agent 学习代码归档到 `examples/learning/`
 
 ### 当前明确不要实现
 
@@ -1375,7 +1376,7 @@ FlowAgent 的差异点不是“把这些项目重新实现一遍”，而是聚�
 每次开始一个新开发会话时，可以使用：
 
 ```text
-Read FLOWAGENT_PROJECT.md and 学习路线.md first.
+Read docs/FLOWAGENT_PROJECT.md and docs/学习路线.md first.
 Identify the current milestone and its Definition of Done.
 Do not implement features from later milestones.
 Explain the smallest implementation step for the current milestone,

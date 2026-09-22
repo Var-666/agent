@@ -1,0 +1,26 @@
+[project]
+name = "flow-agent"
+version = "0.1.0"
+description = "Agent to Skill to Automation platform"
+requires-python = ">=3.11"
+
+dependencies = [
+    "pydantic>=2",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
