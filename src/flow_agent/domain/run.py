@@ -1,12 +1,15 @@
 from enum import StrEnum
 from uuid import uuid4
+from typing import ClassVar
 
 from pydantic import BaseModel, Field
 
-from flow_agent.domain.task import Task
+from flow_agent.domain.task import Task,TaskStatus
 from flow_agent.exceptions import (
     DuplicateTaskError,
+    InvalidRunStateTransition,
     InvalidTaskDependency,
+    RunNotCompletable,
     TaskDependencyCycle,
 )
 
@@ -25,6 +28,19 @@ class RunStatus(StrEnum):
 
 
 class Run(BaseModel):
+    _ALLOWED_TRANSITIONS: ClassVar[dict[RunStatus, frozenset[RunStatus]]] = {
+        RunStatus.QUEUED: frozenset({RunStatus.PLANNING,RunStatus.CANCELLED,}),
+        RunStatus.PLANNING: frozenset({RunStatus.RUNNING,RunStatus.WAITING_USER,RunStatus.BLOCKED,RunStatus.FAILED,RunStatus.CANCELLED,}),
+        RunStatus.RUNNING: frozenset({RunStatus.WAITING_USER,RunStatus.WAITING_APPROVAL,RunStatus.WAITING_EXTERNAL,RunStatus.BLOCKED,RunStatus.COMPLETED,RunStatus.FAILED,RunStatus.CANCELLED,}),
+        RunStatus.WAITING_USER: frozenset({RunStatus.RUNNING,RunStatus.BLOCKED,RunStatus.FAILED,RunStatus.CANCELLED,}),
+        RunStatus.WAITING_APPROVAL: frozenset({RunStatus.RUNNING,RunStatus.BLOCKED,RunStatus.FAILED,RunStatus.CANCELLED,}),
+        RunStatus.WAITING_EXTERNAL: frozenset({RunStatus.RUNNING,RunStatus.BLOCKED,RunStatus.FAILED,RunStatus.CANCELLED,}),
+        RunStatus.BLOCKED: frozenset({RunStatus.RUNNING,RunStatus.FAILED,RunStatus.CANCELLED,}),
+        RunStatus.COMPLETED: frozenset(),
+        RunStatus.FAILED: frozenset(),
+        RunStatus.CANCELLED: frozenset(),
+    }
+
     id: str = Field(default_factory=lambda: str(uuid4()), frozen=True)
     goal_id: str = Field(min_length=1, frozen=True)
     status: RunStatus = Field(default=RunStatus.QUEUED, frozen=True)
@@ -42,6 +58,27 @@ class Run(BaseModel):
         except TaskDependencyCycle:
             self.tasks.pop()
             raise
+
+    def transition_to(self, new_status: RunStatus) -> None:
+      target_status = RunStatus(new_status)
+
+      allowed_transitions = self._ALLOWED_TRANSITIONS[self.status]
+
+      if target_status not in allowed_transitions:
+          raise InvalidRunStateTransition(current_status=self.status.value,target_status=target_status.value)
+
+      if target_status == RunStatus.COMPLETED:
+          self._validate_completion()
+
+      object.__setattr__(self,"status",target_status)
+
+    def _validate_completion(self) -> None:
+      for task in self.tasks:
+          if task.status == TaskStatus.SKIPPED:
+              continue
+
+          if task.status != TaskStatus.COMPLETED:
+              raise RunNotCompletable()
 
     def _contains_task(self, task_id: str) -> bool:
         return any(task.id == task_id for task in self.tasks)
