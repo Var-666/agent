@@ -5,12 +5,16 @@ from typing import ClassVar
 from pydantic import BaseModel, Field
 
 from flow_agent.domain.task import Task,TaskStatus
+from flow_agent.domain.artifact import Artifact
 from flow_agent.exceptions import (
     DuplicateTaskError,
     InvalidRunStateTransition,
     InvalidTaskDependency,
     RunNotCompletable,
     TaskDependencyCycle,
+    ArtifactRunMismatch,
+    ArtifactTaskMismatch,
+    DuplicateArtifactError,
 )
 
 
@@ -45,6 +49,7 @@ class Run(BaseModel):
     goal_id: str = Field(min_length=1, frozen=True)
     status: RunStatus = Field(default=RunStatus.QUEUED, frozen=True)
     tasks: list[Task] = Field(default_factory=list)
+    artifacts: list[Artifact] = Field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
         if self._contains_task(task.id):
@@ -58,6 +63,18 @@ class Run(BaseModel):
         except TaskDependencyCycle:
             self.tasks.pop()
             raise
+
+    def add_artifact(self,artifact: Artifact) -> None:
+      if self._contains_artifact(artifact.id):
+        raise DuplicateArtifactError(artifact.id)
+
+      if artifact.run_id != self.id:
+        raise ArtifactRunMismatch(artifact_run_id=artifact.run_id,run_id=self.id)
+
+      if (artifact.producer_task_id is not None and not self._contains_task(artifact.producer_task_id)):
+        raise ArtifactTaskMismatch(artifact.producer_task_id)
+
+      self.artifacts.append(artifact)
 
     def transition_to(self, new_status: RunStatus) -> None:
       target_status = RunStatus(new_status)
@@ -79,6 +96,9 @@ class Run(BaseModel):
 
           if task.status != TaskStatus.COMPLETED:
               raise RunNotCompletable()
+
+    def _contains_artifact(self, artifact_id: str) ->bool:
+      return any(artifact.id == artifact_id for artifact in self.artifacts)
 
     def _contains_task(self, task_id: str) -> bool:
         return any(task.id == task_id for task in self.tasks)

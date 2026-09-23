@@ -4,11 +4,15 @@ from pydantic import ValidationError
 
 from flow_agent.domain.run import Run, RunStatus
 from flow_agent.domain.task import Task, TaskStatus
+from flow_agent.domain.artifact import Artifact, ArtifactKind
 from flow_agent.exceptions import (
     DuplicateTaskError,
     InvalidRunStateTransition,
     InvalidTaskDependency,
     RunNotCompletable,
+    ArtifactRunMismatch,
+    ArtifactTaskMismatch,
+    DuplicateArtifactError,
 )
 
 
@@ -225,3 +229,77 @@ def test_run_status_cannot_be_modified_directly():
 
     with pytest.raises(ValidationError):
         run.status = RunStatus.COMPLETED
+
+def test_add_artifact():
+    run = Run(goal_id="goal-001")
+
+    artifact = Artifact(
+        run_id=run.id,
+        kind=ArtifactKind.MARKDOWN,
+        path="output/report.md",
+    )
+
+    run.add_artifact(artifact)
+
+    assert run.artifacts == [artifact]
+
+
+def test_add_artifact_produced_by_run_task():
+    run = Run(goal_id="goal-001")
+
+    task = Task(
+        title="Write report",
+        description="Write final report",
+    )
+
+    run.add_task(task)
+
+    artifact = Artifact(
+        run_id=run.id,
+        producer_task_id=task.id,
+        kind=ArtifactKind.MARKDOWN,
+        path="output/report.md",
+    )
+
+    run.add_artifact(artifact)
+
+    assert run.artifacts == [artifact]
+
+def test_reject_artifact_from_another_run():
+    run = Run(goal_id="goal-001")
+
+    artifact = Artifact(
+        run_id="another-run",
+        kind=ArtifactKind.TEXT,
+        path="output/result.txt",
+    )
+
+    with pytest.raises(ArtifactRunMismatch):
+        run.add_artifact(artifact)
+
+def test_reject_artifact_from_unknown_task():
+    run = Run(goal_id="goal-001")
+
+    artifact = Artifact(
+        run_id=run.id,
+        producer_task_id="missing-task",
+        kind=ArtifactKind.TEXT,
+        path="output/result.txt",
+    )
+
+    with pytest.raises(ArtifactTaskMismatch):
+        run.add_artifact(artifact)
+
+def test_reject_duplicate_artifact():
+    run = Run(goal_id="goal-001")
+
+    artifact = Artifact(
+        run_id=run.id,
+        kind=ArtifactKind.TEXT,
+        path="output/result.txt",
+    )
+
+    run.add_artifact(artifact)
+
+    with pytest.raises(DuplicateArtifactError):
+        run.add_artifact(artifact)

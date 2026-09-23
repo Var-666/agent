@@ -1,6 +1,7 @@
 class FlowAgentError(Exception):
     """FlowAgent domain base exception."""
 
+"""==============================Task error=============================="""
 
 class InvalidTaskStateTransition(FlowAgentError):
     """Raised when a task cannot transition to the requested status."""
@@ -29,6 +30,8 @@ class TaskDependencyCycle(FlowAgentError):
     def __init__(self, task_id: str):
         super().__init__(f"Task dependency cycle detected involving task: {task_id}")
 
+"""==============================Run error=============================="""
+
 class InvalidRunStateTransition(FlowAgentError):
     """Raised when a run cannot transition to the requested status."""
 
@@ -41,3 +44,25 @@ class RunNotCompletable(FlowAgentError):
 
     def __init__(self):
         super().__init__("Run cannot be completed while non-skipped tasks are not completed")
+
+"""==============================Artifact error=============================="""
+
+class DuplicateArtifactError(FlowAgentError):
+    """Raised when a run already contains an artifact."""
+
+    def __init__(self, artifact_id: str):
+        super().__init__(f"Artifact already exists in run: {artifact_id}")
+
+
+class ArtifactRunMismatch(FlowAgentError):
+    """Raised when an artifact belongs to another run."""
+
+    def __init__(self, artifact_run_id: str, run_id: str):
+        super().__init__(f"Artifact belongs to run {artifact_run_id}, "f"not run {run_id}")
+
+
+class ArtifactTaskMismatch(FlowAgentError):
+    """Raised when artifact producer task is not in the run."""
+
+    def __init__(self, task_id: str):
+        super().__init__(f"Artifact producer task does not belong to run: "f"{task_id}")
