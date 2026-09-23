@@ -1,11 +1,11 @@
 from enum import StrEnum
+from typing import ClassVar, Self
 from uuid import uuid4
-from typing import ClassVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from flow_agent.domain.task import Task,TaskStatus
 from flow_agent.domain.artifact import Artifact
+from flow_agent.domain.task import Task, TaskStatus
 from flow_agent.exceptions import (
     DuplicateTaskError,
     InvalidRunStateTransition,
@@ -48,33 +48,24 @@ class Run(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()), frozen=True)
     goal_id: str = Field(min_length=1, frozen=True)
     status: RunStatus = Field(default=RunStatus.QUEUED, frozen=True)
-    tasks: list[Task] = Field(default_factory=list)
-    artifacts: list[Artifact] = Field(default_factory=list)
+    tasks: tuple[Task, ...] = Field(default_factory=tuple, frozen=True)
+    artifacts: tuple[Artifact, ...] = Field(default_factory=tuple, frozen=True)
+
+    @model_validator(mode="after")
+    def validate_domain_invariants(self) -> Self:
+        self._validate_task_collection(self.tasks)
+        self._validate_artifact_collection(self.artifacts)
+        return self
 
     def add_task(self, task: Task) -> None:
-        if self._contains_task(task.id):
-            raise DuplicateTaskError(task.id)
+        candidate_tasks = self.tasks + (task,)
+        self._validate_task_collection(candidate_tasks)
+        object.__setattr__(self, "tasks", candidate_tasks)
 
-        self._validate_task_dependencies(task)
-        self.tasks.append(task)
-
-        try:
-            self._validate_no_dependency_cycle()
-        except TaskDependencyCycle:
-            self.tasks.pop()
-            raise
-
-    def add_artifact(self,artifact: Artifact) -> None:
-      if self._contains_artifact(artifact.id):
-        raise DuplicateArtifactError(artifact.id)
-
-      if artifact.run_id != self.id:
-        raise ArtifactRunMismatch(artifact_run_id=artifact.run_id,run_id=self.id)
-
-      if (artifact.producer_task_id is not None and not self._contains_task(artifact.producer_task_id)):
-        raise ArtifactTaskMismatch(artifact.producer_task_id)
-
-      self.artifacts.append(artifact)
+    def add_artifact(self, artifact: Artifact) -> None:
+        candidate_artifacts = self.artifacts + (artifact,)
+        self._validate_artifact_collection(candidate_artifacts)
+        object.__setattr__(self, "artifacts", candidate_artifacts)
 
     def transition_to(self, new_status: RunStatus) -> None:
       target_status = RunStatus(new_status)
@@ -88,6 +79,55 @@ class Run(BaseModel):
           self._validate_completion()
 
       object.__setattr__(self,"status",target_status)
+
+    def _validate_task_collection(self, tasks: tuple[Task, ...]) -> None:
+        task_ids: set[str] = set()
+
+        for task in tasks:
+            if task.id in task_ids:
+                raise DuplicateTaskError(task.id)
+
+            task_ids.add(task.id)
+
+        for task in tasks:
+            for dependency_id in task.dependencies:
+                if dependency_id == task.id:
+                    raise InvalidTaskDependency(
+                        task_id=task.id,
+                        dependency_id=dependency_id,
+                    )
+
+                if dependency_id not in task_ids:
+                    raise InvalidTaskDependency(
+                        task_id=task.id,
+                        dependency_id=dependency_id,
+                    )
+
+        self._validate_no_dependency_cycle(tasks)
+
+    def _validate_artifact_collection(
+        self,
+        artifacts: tuple[Artifact, ...],
+    ) -> None:
+        artifact_ids: set[str] = set()
+
+        for artifact in artifacts:
+            if artifact.id in artifact_ids:
+                raise DuplicateArtifactError(artifact.id)
+
+            artifact_ids.add(artifact.id)
+
+            if artifact.run_id != self.id:
+                raise ArtifactRunMismatch(
+                    artifact_run_id=artifact.run_id,
+                    run_id=self.id,
+                )
+
+            if (
+                artifact.producer_task_id is not None
+                and not self._contains_task(artifact.producer_task_id)
+            ):
+                raise ArtifactTaskMismatch(artifact.producer_task_id)
 
     def _validate_completion(self) -> None:
       for task in self.tasks:
@@ -103,22 +143,8 @@ class Run(BaseModel):
     def _contains_task(self, task_id: str) -> bool:
         return any(task.id == task_id for task in self.tasks)
 
-    def _validate_task_dependencies(self, task: Task) -> None:
-        for dependency_id in task.dependencies:
-            if dependency_id == task.id:
-                raise InvalidTaskDependency(
-                    task_id=task.id,
-                    dependency_id=dependency_id,
-                )
-
-            if not self._contains_task(dependency_id):
-                raise InvalidTaskDependency(
-                    task_id=task.id,
-                    dependency_id=dependency_id,
-                )
-
-    def _validate_no_dependency_cycle(self) -> None:
-        graph = {task.id: task.dependencies for task in self.tasks}
+    def _validate_no_dependency_cycle(self, tasks: tuple[Task, ...]) -> None:
+        graph = {task.id: task.dependencies for task in tasks}
 
         visiting: set[str] = set()
         visited: set[str] = set()
@@ -131,7 +157,7 @@ class Run(BaseModel):
 
             visiting.add(task_id)
 
-            for dependency_id in graph.get(task_id, []):
+            for dependency_id in graph.get(task_id, ()):
                 visit(dependency_id)
 
             visiting.remove(task_id)

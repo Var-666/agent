@@ -14,7 +14,7 @@ def test_create_task():
     assert task.title == "搜索官方资料"
     assert task.description == "搜索 LangChain 最近 7 天的重要更新"
     assert task.status == TaskStatus.PENDING
-    assert task.dependencies == []
+    assert task.dependencies == ()
 
 
 def test_task_generates_unique_ids():
@@ -41,10 +41,10 @@ def test_task_accepts_dependencies():
         ],
     )
 
-    assert task.dependencies == [
+    assert task.dependencies == (
         "task-001",
         "task-002",
-    ]
+    )
 
 
 def test_task_rejects_invalid_status():
@@ -165,3 +165,17 @@ def test_task_status_cannot_be_modified_directly():
 
     with pytest.raises(ValidationError):
         task.status = TaskStatus.COMPLETED
+
+
+def test_task_dependencies_cannot_be_modified_directly():
+    task = Task(
+        title="Read",
+        description="Read sources",
+        dependencies=["task-001"],
+    )
+
+    with pytest.raises(AttributeError):
+        task.dependencies.append("task-002")
+
+    with pytest.raises(ValidationError):
+        task.dependencies = ("task-002",)

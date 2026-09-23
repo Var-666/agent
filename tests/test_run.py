@@ -13,6 +13,7 @@ from flow_agent.exceptions import (
     ArtifactRunMismatch,
     ArtifactTaskMismatch,
     DuplicateArtifactError,
+    TaskDependencyCycle,
 )
 
 
@@ -23,7 +24,8 @@ def test_create_run():
 
     assert run.goal_id == "goal-001"
     assert run.status == RunStatus.QUEUED
-    assert run.tasks == []
+    assert run.tasks == ()
+    assert run.artifacts == ()
 
 
 def test_run_generates_unique_ids():
@@ -43,7 +45,7 @@ def test_add_task():
 
     run.add_task(task)
 
-    assert run.tasks == [task]
+    assert run.tasks == (task,)
 
 
 def test_add_task_with_valid_dependency():
@@ -63,10 +65,10 @@ def test_add_task_with_valid_dependency():
     run.add_task(search_task)
     run.add_task(read_task)
 
-    assert run.tasks == [
+    assert run.tasks == (
         search_task,
         read_task,
-    ]
+    )
 
 
 def test_reject_duplicate_task():
@@ -241,7 +243,7 @@ def test_add_artifact():
 
     run.add_artifact(artifact)
 
-    assert run.artifacts == [artifact]
+    assert run.artifacts == (artifact,)
 
 
 def test_add_artifact_produced_by_run_task():
@@ -263,7 +265,7 @@ def test_add_artifact_produced_by_run_task():
 
     run.add_artifact(artifact)
 
-    assert run.artifacts == [artifact]
+    assert run.artifacts == (artifact,)
 
 def test_reject_artifact_from_another_run():
     run = Run(goal_id="goal-001")
@@ -303,3 +305,56 @@ def test_reject_duplicate_artifact():
 
     with pytest.raises(DuplicateArtifactError):
         run.add_artifact(artifact)
+
+
+def test_reject_task_dependency_cycle():
+    task_a = Task(
+        id="task-a",
+        title="Task A",
+        description="Task A",
+        dependencies=["task-b"],
+    )
+
+    task_b = Task(
+        id="task-b",
+        title="Task B",
+        description="Task B",
+        dependencies=["task-a"],
+    )
+
+    with pytest.raises(TaskDependencyCycle):
+        Run(
+            goal_id="goal-001",
+            tasks=[task_a, task_b],
+        )
+
+
+def test_tasks_cannot_be_modified_directly():
+    run = Run(goal_id="goal-001")
+
+    task = Task(
+        title="Search",
+        description="Search sources",
+    )
+
+    with pytest.raises(AttributeError):
+        run.tasks.append(task)
+
+    with pytest.raises(ValidationError):
+        run.tasks = (task,)
+
+
+def test_artifacts_cannot_be_modified_directly():
+    run = Run(goal_id="goal-001")
+
+    artifact = Artifact(
+        run_id=run.id,
+        kind=ArtifactKind.TEXT,
+        path="output/result.txt",
+    )
+
+    with pytest.raises(AttributeError):
+        run.artifacts.append(artifact)
+
+    with pytest.raises(ValidationError):
+        run.artifacts = (artifact,)

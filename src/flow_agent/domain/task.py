@@ -42,7 +42,7 @@ class Task(BaseModel):
     title: str = Field(min_length=1)
     description: str = Field(min_length=1)
     status: TaskStatus = Field(default=TaskStatus.PENDING, frozen=True)
-    dependencies: list[str] = Field(default_factory=list)
+    dependencies: tuple[str, ...] = Field(default_factory=tuple, frozen=True)
 
     def transition_to(self, new_status: TaskStatus) -> None:
         target_status = TaskStatus(new_status)
