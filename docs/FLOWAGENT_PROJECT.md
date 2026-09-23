@@ -4,7 +4,9 @@
 >
 > 文档用途：供项目开发者与 Codex 共同阅读，作为产品方向、架构边界、阶段计划和实现约束的统一基线。
 >
-> 当前里程碑：**v0.1 — Domain Foundation**
+> 当前里程碑：**v0.2 — Goal → Structured Plan**
+>
+> 已完成：**v0.1 — Domain Foundation**
 >
 > 状态：Draft v1.1
 
@@ -1197,7 +1199,9 @@ Codex 在修改项目代码前必须遵循以下规则：
 
 ---
 
-## 18. 当前里程碑：v0.1
+## 18. 已完成里程碑：v0.1
+
+> 完成日期：2026-09-23
 
 ### 目标
 
@@ -1205,19 +1209,19 @@ Codex 在修改项目代码前必须遵循以下规则：
 
 ### 当前必须实现
 
-- [ ] `Goal`
-- [ ] `Task`
-- [ ] `Run`
-- [ ] `Artifact`
-- [ ] Status Enum / validation
-- [ ] Task dependency validation / cycle detection
-- [ ] Task / Run transition methods
-- [ ] Artifact ownership / safe relative path validation
-- [ ] 配置模块
-- [ ] 基础异常类型
-- [ ] pytest 测试
-- [ ] `.env.example`
-- [ ] README 最小运行说明
+- [x] `Goal`
+- [x] `Task`
+- [x] `Run`
+- [x] `Artifact`
+- [x] Status Enum / validation
+- [x] Task dependency validation / cycle detection
+- [x] Task / Run transition methods
+- [x] Artifact ownership / safe relative path validation
+- [x] 配置模块
+- [x] 基础异常类型
+- [x] pytest 测试
+- [x] `.env.example`
+- [x] README 最小运行说明
 - [x] 将现有 Agent 学习代码归档到 `examples/learning/`
 
 ### 当前明确不要实现
@@ -1387,6 +1391,7 @@ Keep domain logic independent from LangChain/LangGraph unless the current milest
 当前应回答：
 
 ```text
-Current milestone: v0.1 — Domain Foundation
-Next objective: bootstrap project structure and implement Goal / Task / Run / Artifact with tests.
+Completed milestone: v0.1 — Domain Foundation
+Current milestone: v0.2 — Goal → Structured Plan
+Next objective: define the ExecutionPlan schema and the minimal Structured Planner boundary.
 ```
