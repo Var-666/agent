@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -82,3 +82,12 @@ def test_goal_created_at_is_utc():
 
     assert goal.created_at.tzinfo is not None
     assert goal.created_at.utcoffset() == timezone.utc.utcoffset(goal.created_at)
+
+
+def test_goal_rejects_naive_created_at():
+    with pytest.raises(ValidationError):
+        Goal(
+            title="Test",
+            description="Test",
+            created_at=datetime.now(),
+        )

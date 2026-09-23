@@ -15,6 +15,7 @@ from flow_agent.exceptions import (
     ArtifactRunMismatch,
     ArtifactTaskMismatch,
     DuplicateArtifactError,
+    TerminalRunMutationError,
 )
 
 
@@ -45,6 +46,14 @@ class Run(BaseModel):
         RunStatus.CANCELLED: frozenset(),
     }
 
+    _TERMINAL_STATUSES: ClassVar[frozenset[RunStatus]] = frozenset(
+        {
+            RunStatus.COMPLETED,
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+        }
+    )
+
     id: str = Field(default_factory=lambda: str(uuid4()), frozen=True)
     goal_id: str = Field(min_length=1, frozen=True)
     status: RunStatus = Field(default=RunStatus.QUEUED, frozen=True)
@@ -55,14 +64,20 @@ class Run(BaseModel):
     def validate_domain_invariants(self) -> Self:
         self._validate_task_collection(self.tasks)
         self._validate_artifact_collection(self.artifacts)
+
+        if self.status == RunStatus.COMPLETED:
+            self._validate_completion()
+
         return self
 
     def add_task(self, task: Task) -> None:
+        self._ensure_mutable()
         candidate_tasks = self.tasks + (task,)
         self._validate_task_collection(candidate_tasks)
         object.__setattr__(self, "tasks", candidate_tasks)
 
     def add_artifact(self, artifact: Artifact) -> None:
+        self._ensure_mutable()
         candidate_artifacts = self.artifacts + (artifact,)
         self._validate_artifact_collection(candidate_artifacts)
         object.__setattr__(self, "artifacts", candidate_artifacts)
@@ -165,3 +180,7 @@ class Run(BaseModel):
 
         for task_id in graph:
             visit(task_id)
+
+    def _ensure_mutable(self) -> None:
+        if self.status in self._TERMINAL_STATUSES:
+            raise TerminalRunMutationError(self.status.value)

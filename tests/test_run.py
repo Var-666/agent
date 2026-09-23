@@ -14,6 +14,7 @@ from flow_agent.exceptions import (
     ArtifactTaskMismatch,
     DuplicateArtifactError,
     TaskDependencyCycle,
+    TerminalRunMutationError,
 )
 
 
@@ -358,3 +359,54 @@ def test_artifacts_cannot_be_modified_directly():
 
     with pytest.raises(ValidationError):
         run.artifacts = (artifact,)
+
+
+def test_reject_completed_run_with_pending_task():
+    task = Task(
+        title="Search",
+        description="Search sources",
+    )
+
+    with pytest.raises(RunNotCompletable):
+        Run(
+            goal_id="goal-001",
+            status=RunStatus.COMPLETED,
+            tasks=[task],
+        )
+
+
+def test_terminal_run_cannot_add_task():
+    run = Run(
+        goal_id="goal-001",
+    )
+
+    run.transition_to(RunStatus.PLANNING)
+    run.transition_to(RunStatus.RUNNING)
+    run.transition_to(RunStatus.COMPLETED)
+
+    task = Task(
+        title="Late task",
+        description="Should not be accepted",
+    )
+
+    with pytest.raises(TerminalRunMutationError):
+        run.add_task(task)
+
+
+def test_terminal_run_cannot_add_artifact():
+    run = Run(
+        goal_id="goal-001",
+    )
+
+    run.transition_to(RunStatus.PLANNING)
+    run.transition_to(RunStatus.RUNNING)
+    run.transition_to(RunStatus.COMPLETED)
+
+    artifact = Artifact(
+        run_id=run.id,
+        kind=ArtifactKind.TEXT,
+        path="output/result.txt",
+    )
+
+    with pytest.raises(TerminalRunMutationError):
+        run.add_artifact(artifact)

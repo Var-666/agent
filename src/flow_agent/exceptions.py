@@ -45,6 +45,13 @@ class RunNotCompletable(FlowAgentError):
     def __init__(self):
         super().__init__("Run cannot be completed while non-skipped tasks are not completed")
 
+
+class TerminalRunMutationError(FlowAgentError):
+    """Raised when attempting to modify a terminal run."""
+
+    def __init__(self, status: str):
+        super().__init__(f"Cannot modify run in terminal status: {status}")
+
 """==============================Artifact error=============================="""
 
 class DuplicateArtifactError(FlowAgentError):

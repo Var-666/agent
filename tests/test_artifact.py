@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -80,3 +80,13 @@ def test_artifact_id_is_immutable():
 
     with pytest.raises(ValidationError):
         artifact.id = "new-id"
+
+
+def test_artifact_rejects_naive_created_at():
+    with pytest.raises(ValidationError):
+        Artifact(
+            run_id="run-001",
+            kind=ArtifactKind.TEXT,
+            path="output/result.txt",
+            created_at=datetime.now(),
+        )
