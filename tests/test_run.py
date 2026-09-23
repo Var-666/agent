@@ -1,5 +1,6 @@
-import pytest
+from datetime import datetime, timezone
 
+import pytest
 from pydantic import ValidationError
 
 from flow_agent.domain.run import Run, RunStatus
@@ -27,6 +28,8 @@ def test_create_run():
     assert run.status == RunStatus.QUEUED
     assert run.tasks == ()
     assert run.artifacts == ()
+    assert run.started_at is None
+    assert run.finished_at is None
 
 
 def test_run_generates_unique_ids():
@@ -410,3 +413,100 @@ def test_terminal_run_cannot_add_artifact():
 
     with pytest.raises(TerminalRunMutationError):
         run.add_artifact(artifact)
+
+def test_run_sets_started_at_when_first_running():
+    run = Run(goal_id="goal-001")
+
+    run.transition_to(RunStatus.PLANNING)
+
+    assert run.started_at is None
+
+    run.transition_to(RunStatus.RUNNING)
+
+    assert run.started_at is not None
+    assert run.started_at.utcoffset() == timezone.utc.utcoffset(
+        run.started_at
+    )
+
+
+def test_run_does_not_reset_started_at_after_wait():
+    run = Run(goal_id="goal-001")
+
+    run.transition_to(RunStatus.PLANNING)
+    run.transition_to(RunStatus.RUNNING)
+
+    started_at = run.started_at
+
+    run.transition_to(RunStatus.WAITING_USER)
+    run.transition_to(RunStatus.RUNNING)
+
+    assert run.started_at == started_at
+
+
+def test_run_sets_finished_at_when_completed():
+    run = Run(goal_id="goal-001")
+
+    run.transition_to(RunStatus.PLANNING)
+    run.transition_to(RunStatus.RUNNING)
+    run.transition_to(RunStatus.COMPLETED)
+
+    assert run.finished_at is not None
+    assert (
+        run.finished_at.utcoffset()
+        == timezone.utc.utcoffset(
+            run.finished_at
+        )
+    )
+
+
+def test_failed_run_sets_finished_at():
+    run = Run(goal_id="goal-001")
+
+    run.transition_to(RunStatus.PLANNING)
+    run.transition_to(RunStatus.FAILED)
+
+    assert run.finished_at is not None
+
+
+def test_cancelled_run_sets_finished_at():
+    run = Run(goal_id="goal-001")
+
+    run.transition_to(RunStatus.CANCELLED)
+
+    assert run.finished_at is not None
+
+
+def test_run_rejects_naive_started_at():
+    with pytest.raises(ValidationError):
+        Run(
+            goal_id="goal-001",
+            started_at=datetime.now(),
+        )
+
+
+def test_run_rejects_finished_at_before_started_at():
+    started_at = datetime(
+        2026,
+        9,
+        23,
+        10,
+        0,
+        tzinfo=timezone.utc,
+    )
+
+    finished_at = datetime(
+        2026,
+        9,
+        23,
+        9,
+        0,
+        tzinfo=timezone.utc,
+    )
+
+    with pytest.raises(ValidationError):
+        Run(
+            goal_id="goal-001",
+            status=RunStatus.FAILED,
+            started_at=started_at,
+            finished_at=finished_at,
+        )

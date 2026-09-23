@@ -1,8 +1,9 @@
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import ClassVar, Self
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_validator
 
 from flow_agent.domain.artifact import Artifact
 from flow_agent.domain.task import Task, TaskStatus
@@ -59,6 +60,8 @@ class Run(BaseModel):
     status: RunStatus = Field(default=RunStatus.QUEUED, frozen=True)
     tasks: tuple[Task, ...] = Field(default_factory=tuple, frozen=True)
     artifacts: tuple[Artifact, ...] = Field(default_factory=tuple, frozen=True)
+    started_at: AwareDatetime | None = Field(default=None, frozen=True)
+    finished_at: AwareDatetime | None = Field(default=None, frozen=True)
 
     @model_validator(mode="after")
     def validate_domain_invariants(self) -> Self:
@@ -68,7 +71,28 @@ class Run(BaseModel):
         if self.status == RunStatus.COMPLETED:
             self._validate_completion()
 
+        if self.status in self._TERMINAL_STATUSES and self.finished_at is None:
+            raise ValueError("Terminal run must have finished_at")
+
+        if self.status not in self._TERMINAL_STATUSES and self.finished_at is not None:
+            raise ValueError("Non-terminal run cannot have finished_at")
+
+        if (
+            self.started_at is not None
+            and self.finished_at is not None
+            and self.finished_at < self.started_at
+        ):
+            raise ValueError("finished_at cannot be earlier than started_at")
+
         return self
+
+    @field_validator("started_at", "finished_at")
+    @classmethod
+    def normalize_datetime_to_utc(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+
+        return value.astimezone(timezone.utc)
 
     def add_task(self, task: Task) -> None:
         self._ensure_mutable()
@@ -83,17 +107,28 @@ class Run(BaseModel):
         object.__setattr__(self, "artifacts", candidate_artifacts)
 
     def transition_to(self, new_status: RunStatus) -> None:
-      target_status = RunStatus(new_status)
+        target_status = RunStatus(new_status)
 
-      allowed_transitions = self._ALLOWED_TRANSITIONS[self.status]
+        allowed_transitions = self._ALLOWED_TRANSITIONS[self.status]
 
-      if target_status not in allowed_transitions:
-          raise InvalidRunStateTransition(current_status=self.status.value,target_status=target_status.value)
+        if target_status not in allowed_transitions:
+            raise InvalidRunStateTransition(
+                current_status=self.status.value,
+                target_status=target_status.value,
+            )
 
-      if target_status == RunStatus.COMPLETED:
-          self._validate_completion()
+        if target_status == RunStatus.COMPLETED:
+            self._validate_completion()
 
-      object.__setattr__(self,"status",target_status)
+        now = datetime.now(timezone.utc)
+
+        if target_status == RunStatus.RUNNING and self.started_at is None:
+            object.__setattr__(self, "started_at", now)
+
+        if target_status in self._TERMINAL_STATUSES:
+            object.__setattr__(self, "finished_at", now)
+
+        object.__setattr__(self, "status", target_status)
 
     def _validate_task_collection(self, tasks: tuple[Task, ...]) -> None:
         task_ids: set[str] = set()
