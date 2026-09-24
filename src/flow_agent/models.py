@@ -16,4 +16,6 @@ def create_chat_model(settings: Settings) -> BaseChatModel:
       api_key=settings.llm_api_key.get_secret_value(),
       base_url=settings.llm_base_url or None,
       temperature=0,
+      timeout=settings.llm_timeout_seconds,
+      max_retries=settings.llm_max_retries,
   )

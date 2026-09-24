@@ -9,6 +9,23 @@ from flow_agent.planning.schema import (
     PlanTask,
 )
 
+import pytest
+
+from langchain_core.exceptions import (
+    OutputParserException,
+)
+
+from flow_agent.exceptions import (
+    PlannerModelError,
+    PlannerOutputError,
+)
+
+def make_goal() -> Goal:
+    return Goal(
+        title="Research LangChain",
+        description="Research recent LangChain updates",
+    )
+
 
 def test_planner_binds_plan_draft_schema():
     model = Mock(spec=BaseChatModel)
@@ -132,3 +149,55 @@ def test_planner_prompt_contains_goal_fields():
     assert "Goal description" in human_content
     assert "criterion-a" in human_content
     assert "report.md" in human_content
+    
+def test_planner_wraps_invalid_output_error():
+    model = Mock(spec=BaseChatModel)
+    structured_model = Mock()
+
+    model.with_structured_output.return_value = (
+        structured_model
+    )
+
+    structured_model.invoke.side_effect = (
+        OutputParserException(
+            "Invalid structured output"
+        )
+    )
+
+    planner = StructuredPlanner(model)
+
+    with pytest.raises(
+        PlannerOutputError
+    ) as exc_info:
+        planner.plan(make_goal())
+
+    assert isinstance(
+        exc_info.value.__cause__,
+        OutputParserException,
+    )
+    
+def test_planner_wraps_model_error():
+    model = Mock(spec=BaseChatModel)
+    structured_model = Mock()
+
+    model.with_structured_output.return_value = (
+        structured_model
+    )
+
+    structured_model.invoke.side_effect = RuntimeError(
+        "provider unavailable"
+    )
+
+    planner = StructuredPlanner(model)
+
+    with pytest.raises(
+        PlannerModelError
+    ) as exc_info:
+        planner.plan(make_goal())
+
+    assert isinstance(
+        exc_info.value.__cause__,
+        RuntimeError,
+    )
+    
+    

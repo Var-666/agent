@@ -1,5 +1,5 @@
 class FlowAgentError(Exception):
-    """FlowAgent domain base exception."""
+    """FlowAgent base exception."""
 
 """==============================Task error=============================="""
 
@@ -73,3 +73,22 @@ class ArtifactTaskMismatch(FlowAgentError):
 
     def __init__(self, task_id: str):
         super().__init__(f"Artifact producer task does not belong to run: "f"{task_id}")
+
+"""==============================Planner error=============================="""
+
+class PlannerError(FlowAgentError):
+    """Base exception for planner failures."""
+
+
+class PlannerModelError(PlannerError):
+    """Raised when the planner model invocation fails."""
+
+    def __init__(self):
+        super().__init__("Planner model invocation failed")
+
+
+class PlannerOutputError(PlannerError):
+    """Raised when planner output cannot be validated."""
+
+    def __init__(self):
+        super().__init__("Planner returned invalid structured output")

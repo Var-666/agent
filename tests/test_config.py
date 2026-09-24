@@ -97,3 +97,18 @@ def test_settings_load_from_env_file(tmp_path):
         "fixture-workspace"
     )
     assert settings.log_level == "WARNING"
+
+def test_default_llm_runtime_settings():
+    settings = Settings(
+        _env_file=None,
+    )
+
+    assert settings.llm_timeout_seconds == 30.0
+    assert settings.llm_max_retries == 2
+    
+def test_reject_negative_llm_retries():
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            llm_max_retries=-1,
+        )
