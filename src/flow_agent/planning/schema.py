@@ -1,9 +1,12 @@
 from typing import Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 
 
 class PlanTask(BaseModel):
+
+    model_config = ConfigDict(frozen=True)
+
     key: str = Field(
         min_length=1,
         description="Stable identifier used inside the plan.",
@@ -20,6 +23,9 @@ class PlanTask(BaseModel):
 
 
 class ExecutionPlan(BaseModel):
+
+    model_config = ConfigDict(frozen=True)
+  
     goal_id: str = Field(min_length=1)
     summary: str = Field(
         min_length=1,
