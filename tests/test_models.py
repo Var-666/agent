@@ -27,3 +27,13 @@ def test_create_chat_model_requires_api_key():
         match="FLOW_AGENT_LLM_API_KEY",
     ):
         create_chat_model(settings)
+        
+def test_create_chat_model_rejects_empty_model():
+    settings = Settings(
+        _env_file=None,
+        llm_model="",
+        llm_api_key="test-key",
+    )
+
+    with pytest.raises(ValueError):
+        create_chat_model(settings)

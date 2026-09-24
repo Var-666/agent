@@ -4,11 +4,11 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from flow_agent.config import Settings
 
 def create_chat_model(settings: Settings) -> BaseChatModel:
-  if settings.llm_model is None:
+  if not settings.llm_model:
     raise ValueError("FLOW_AGENT_LLM_MODEL is required")
   
-  if settings.llm_api_key is None:
-        raise ValueError("FLOW_AGENT_LLM_API_KEY is required")
+  if (settings.llm_api_key is None or not settings.llm_api_key.get_secret_value()):
+    raise ValueError("FLOW_AGENT_LLM_API_KEY is required")
 
   return init_chat_model(
       model=settings.llm_model,
