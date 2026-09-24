@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal[
@@ -30,6 +31,10 @@ class Settings(BaseSettings):
     environment: Environment = "development"
     workspace_root: Path = Path("workspace")
     log_level: LogLevel = "INFO"
+    
+    llm_model: str | None = None
+    llm_api_key: SecretStr | None = None
+    llm_base_url: str | None = None
 
 
 def load_settings() -> Settings:
