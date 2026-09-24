@@ -161,3 +161,29 @@ def test_plan_allows_dependency_on_later_task():
     )
 
     assert plan.tasks[0].dependencies == ("search",)
+
+def test_plan_task_is_immutable():
+    task = PlanTask(
+        key="search",
+        title="Search",
+        description="Search sources",
+    )
+
+    with pytest.raises(ValidationError):
+        task.dependencies = ("missing",)
+        
+def test_execution_plan_is_immutable():
+    plan = ExecutionPlan(
+        goal_id="goal-001",
+        summary="Search sources",
+        tasks=[
+            PlanTask(
+                key="search",
+                title="Search",
+                description="Search sources",
+            ),
+        ],
+    )
+
+    with pytest.raises(ValidationError):
+        plan.summary = "Changed"
