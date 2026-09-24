@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from typing import Self
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class PlanTask(BaseModel):
@@ -24,3 +26,56 @@ class ExecutionPlan(BaseModel):
         description="Short explanation of the execution strategy.",
     )
     tasks: tuple[PlanTask, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_plan(self) -> Self:
+        self._validate_unique_keys()
+        self._validate_dependencies()
+        self._validate_no_dependency_cycle()
+
+        return self
+
+    def _validate_unique_keys(self) -> None:
+        seen: set[str] = set()
+
+        for task in self.tasks:
+            if task.key in seen:
+                raise ValueError(f"Duplicate task key: {task.key}")
+            seen.add(task.key)
+
+    def _validate_dependencies(self) -> None:
+        task_keys = {task.key for task in self.tasks}
+
+        for task in self.tasks:
+            for dependency in task.dependencies:
+                if dependency == task.key:
+                    raise ValueError(f"Task '{task.key}' cannot depend on itself")
+
+                if dependency not in task_keys:
+                    raise ValueError(
+                        f"Task '{task.key}' depends on unknown task '{dependency}'"
+                    )
+
+    def _validate_no_dependency_cycle(self) -> None:
+        graph = {task.key: task.dependencies for task in self.tasks}
+
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(task_key: str) -> None:
+            if task_key in visiting:
+                raise ValueError(f"Task dependency cycle detected at '{task_key}'")
+
+            if task_key in visited:
+                return
+
+            visiting.add(task_key)
+
+            for dependency in graph[task_key]:
+                visit(dependency)
+
+            visiting.remove(task_key)
+            visited.add(task_key)
+
+        for task_key in graph:
+            visit(task_key)

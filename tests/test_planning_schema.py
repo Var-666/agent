@@ -59,3 +59,105 @@ def test_plan_task_requires_title():
             title="",
             description="Search sources.",
         )
+
+
+def test_plan_rejects_duplicate_task_keys():
+    with pytest.raises(ValidationError):
+        ExecutionPlan(
+            goal_id="goal-001",
+            summary="Invalid plan",
+            tasks=[
+                PlanTask(
+                    key="search",
+                    title="Search A",
+                    description="Search A",
+                ),
+                PlanTask(
+                    key="search",
+                    title="Search B",
+                    description="Search B",
+                ),
+            ],
+        )
+
+
+def test_plan_rejects_unknown_dependency():
+    with pytest.raises(ValidationError):
+        ExecutionPlan(
+            goal_id="goal-001",
+            summary="Invalid plan",
+            tasks=[
+                PlanTask(
+                    key="write",
+                    title="Write",
+                    description="Write report",
+                    dependencies=["search"],
+                ),
+            ],
+        )
+
+
+def test_plan_rejects_self_dependency():
+    with pytest.raises(ValidationError):
+        ExecutionPlan(
+            goal_id="goal-001",
+            summary="Invalid plan",
+            tasks=[
+                PlanTask(
+                    key="search",
+                    title="Search",
+                    description="Search sources",
+                    dependencies=["search"],
+                ),
+            ],
+        )
+
+
+def test_plan_rejects_dependency_cycle():
+    with pytest.raises(ValidationError):
+        ExecutionPlan(
+            goal_id="goal-001",
+            summary="Invalid plan",
+            tasks=[
+                PlanTask(
+                    key="a",
+                    title="A",
+                    description="Task A",
+                    dependencies=["b"],
+                ),
+                PlanTask(
+                    key="b",
+                    title="B",
+                    description="Task B",
+                    dependencies=["c"],
+                ),
+                PlanTask(
+                    key="c",
+                    title="C",
+                    description="Task C",
+                    dependencies=["a"],
+                ),
+            ],
+        )
+
+
+def test_plan_allows_dependency_on_later_task():
+    plan = ExecutionPlan(
+        goal_id="goal-001",
+        summary="Valid plan",
+        tasks=[
+            PlanTask(
+                key="write",
+                title="Write",
+                description="Write report",
+                dependencies=["search"],
+            ),
+            PlanTask(
+                key="search",
+                title="Search",
+                description="Search sources",
+            ),
+        ],
+    )
+
+    assert plan.tasks[0].dependencies == ("search",)
