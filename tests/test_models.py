@@ -37,3 +37,13 @@ def test_create_chat_model_rejects_empty_model():
 
     with pytest.raises(ValueError):
         create_chat_model(settings)
+        
+def test_create_chat_model_rejects_empty_api_key():
+    settings = Settings(
+        _env_file=None,
+        llm_model="test-model",
+        llm_api_key="",
+    )
+
+    with pytest.raises(ValueError):
+        create_chat_model(settings)

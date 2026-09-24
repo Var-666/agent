@@ -14,6 +14,6 @@ def create_chat_model(settings: Settings) -> BaseChatModel:
       model=settings.llm_model,
       model_provider="openai",
       api_key=settings.llm_api_key.get_secret_value(),
-      base_url=settings.llm_base_url,
+      base_url=settings.llm_base_url or None,
       temperature=0,
   )
