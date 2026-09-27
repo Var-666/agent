@@ -16,15 +16,15 @@ def main() -> None:
     planner = StructuredPlanner(model)
 
     goal = Goal(
-        title="Research recent LangChain updates",
+        title="研究 LangChain 的最新更新",
         description=(
-            "Research important LangChain updates "
-            "from the last 7 days, verify official sources, "
-            "and produce a Markdown report."
+            "研究过去 7 天 LangChain 的重要更新，"
+            "核实官方来源，"
+            "并生成一份 Markdown 报告。"
         ),
         success_criteria=[
-            "Important claims should be backed by official sources",
-            "The report should focus on updates from the last 7 days",
+            "重要的主张应有官方来源支持。",
+            "该报告应侧重于过去7天内的更新情况。",
         ],
         requested_outputs=[
             "Markdown report",
