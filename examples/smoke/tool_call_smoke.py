@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage
 from flow_agent.config import load_settings
 from flow_agent.models import create_chat_model
 from flow_agent.tools.file import create_read_file_tool
-from flow_agent.tools.executor import execute_tool_call
+from flow_agent.tools.executor import execute_tool_call,execute_tool_calls
 
 
 
@@ -27,8 +27,8 @@ def main() -> None:
 
     messages = [HumanMessage(
         content=(
-            "Read notes.txt from the workspace "
-            "and tell me what it contains."
+            "Read both a.txt and b.txt from the workspace "
+            "and tell me what each file contains."
         )
     )]
 
@@ -36,33 +36,37 @@ def main() -> None:
         messages
     )
     
-    messages.append(response)
-    
     if not response.tool_calls:
       raise RuntimeError("Model did not request a tool")
     
-    tool_call = response.tool_calls[0]
-    tool_message = execute_tool_call(tool_call,[read_file])
+    messages.append(response)
     
-    messages.append(tool_message)
+    tool_messages = execute_tool_calls(response.tool_calls,[read_file])
+    
+    messages.extend(tool_messages)
     
     final_response = model_with_tools.invoke(messages)
     
     print(final_response.text)
     
-    for index, item in enumerate(messages):
-      print(
-          index,
-          type(item).__name__,
-      )
-      
     print(
-        response.tool_calls[0]["id"]
-    )
+    "tool calls:",
+    len(response.tool_calls),
+)
 
-    print(
-        tool_message.tool_call_id
-    )
+    for tool_call in response.tool_calls:
+        print(
+            tool_call["id"],
+            tool_call["name"],
+            tool_call["args"],
+        )
+
+    for tool_message in tool_messages:
+        print(
+            tool_message.tool_call_id,
+            tool_message.status,
+            tool_message.content,
+        )
 
 
 if __name__ == "__main__":
