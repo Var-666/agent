@@ -4,9 +4,9 @@
 >
 > 文档用途：供项目开发者与 Codex 共同阅读，作为产品方向、架构边界、阶段计划和实现约束的统一基线。
 >
-> 当前里程碑：**v0.2 — Goal → Structured Plan**
+> 当前里程碑：**v0.3 — Tool Executor**
 >
-> 已完成：**v0.1 — Domain Foundation**
+> 已完成：**v0.1 — Domain Foundation；v0.2 — Goal → Structured Plan**
 >
 > 状态：Draft v1.1
 
@@ -539,7 +539,7 @@ feat: bootstrap FlowAgent domain model
 
 ---
 
-### v0.2 — Goal → Structured Plan
+### v0.2 — Goal → Structured Plan（主线已完成，2026-09-27）
 
 **学习内容**：Model、Messages、Prompt、invoke、Model Structured Output、基础 LangSmith tracing。
 
@@ -574,6 +574,8 @@ v0.2b Model Call Modes（独立学习实验）
 ```
 
 batch、stream、async 必须有独立练习，但不作为 Structured Planner 上线的前置条件。
+
+进度记录：v0.2a Structured Planner 已完成。仓库中已有 `PlanDraft` / `ExecutionPlan` Schema、Prompt、模型结构化输出调用、错误分类、模型重试配置、单元测试及 smoke 示例；LangSmith tracing 通过可选环境变量启用。用户已验收测试与 smoke 运行，本次收尾未重复运行。v0.2b 的 batch、stream、async 独立练习尚无仓库记录，后续补充，不计入主线交付门槛。
 
 完成标准：
 
@@ -1391,7 +1393,8 @@ Keep domain logic independent from LangChain/LangGraph unless the current milest
 当前应回答：
 
 ```text
-Completed milestone: v0.1 — Domain Foundation
-Current milestone: v0.2 — Goal → Structured Plan
-Next objective: define the ExecutionPlan schema and the minimal Structured Planner boundary.
+Completed milestones: v0.1 — Domain Foundation; v0.2a — Structured Planner
+Current milestone: v0.3 — Tool Executor
+Next objective: implement a bounded manual Model → Tool → ToolMessage → Model cycle.
+Pending independent practice: v0.2b batch, stream, async.
 ```

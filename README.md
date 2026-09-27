@@ -19,17 +19,18 @@ FlowAgent 采用：
 
 ```text
 v0.1 — Domain Foundation ✅
+v0.2 — Goal → Structured Plan ✅
 ```
 
 下一阶段：
 
 ```text
-v0.2 — Goal → Structured Plan
+v0.3 — Tool Executor
 ```
 
-v0.1 建立了 FlowAgent 的工程基础和领域模型。
+v0.1 建立了 FlowAgent 的工程基础和领域模型；v0.2 增加 Goal 到结构化计划的转换。
 
-当前已经覆盖：
+v0.1 覆盖：
 
 * Goal
 * Task
@@ -59,6 +60,22 @@ v0.1 **不包含**：
 * Automation Runtime
 
 这些能力将在后续版本逐步加入。
+
+## Structured Planner (v0.2)
+
+`StructuredPlanner` 接收 `Goal`，通过模型的结构化输出生成 `ExecutionPlan`。计划包含任务 key 和依赖关系；Schema 会拒绝重复 key、未知依赖、自依赖与依赖环。此阶段只生成计划，不执行任务。
+
+`materialize_tasks` 可按依赖顺序将计划任务转换为 Domain `Task`，并把计划 key 映射为运行期 Task ID。
+
+模型输出解析失败与模型调用失败分别封装为 `PlannerOutputError` 和 `PlannerModelError`。连接超时与重试次数由配置控制。
+
+完成模型配置后，可在项目根目录运行 smoke 示例：
+
+```bash
+PYTHONPATH=src .venv/bin/python examples/smoke/planner_smoke.py
+```
+
+可选的 LangSmith tracing 通过 `LANGSMITH_TRACING`、`LANGSMITH_API_KEY` 和 `LANGSMITH_PROJECT` 配置。batch、stream、async 是独立学习练习，尚未收录到仓库，不影响 Structured Planner 主线。
 
 ## Core Domain
 
@@ -162,18 +179,26 @@ agent/
 │   ├── FLOWAGENT_PROJECT.md
 │   └── 学习路线.md
 ├── examples/
-│   └── learning/
+│   ├── learning/
+│   └── smoke/
 ├── src/
 │   └── flow_agent/
 │       ├── __init__.py
 │       ├── config.py
 │       ├── exceptions.py
-│       └── domain/
+│       ├── models.py
+│       ├── domain/
+│       │   ├── __init__.py
+│       │   ├── goal.py
+│       │   ├── task.py
+│       │   ├── run.py
+│       │   └── artifact.py
+│       └── planning/
 │           ├── __init__.py
-│           ├── goal.py
-│           ├── task.py
-│           ├── run.py
-│           └── artifact.py
+│           ├── schema.py
+│           ├── prompt.py
+│           ├── planner.py
+│           └── materialize.py
 ├── tests/
 ├── .env.example
 ├── .gitignore
@@ -221,13 +246,15 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-FlowAgent v0.1 currently supports:
+FlowAgent 的基础配置：
 
 ```dotenv
 FLOW_AGENT_ENVIRONMENT=development
 FLOW_AGENT_WORKSPACE_ROOT=workspace
 FLOW_AGENT_LOG_LEVEL=INFO
 ```
+
+Planner 使用 `.env.example` 中的 `FLOW_AGENT_LLM_MODEL`、`FLOW_AGENT_LLM_API_KEY`、`FLOW_AGENT_LLM_BASE_URL`、`FLOW_AGENT_LLM_TIMEOUT_SECONDS` 和 `FLOW_AGENT_LLM_MAX_RETRIES`。请在本地 `.env` 中设置真实凭据。
 
 Real secrets must never be committed to the repository.
 
