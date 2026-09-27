@@ -7,6 +7,7 @@ from flow_agent.models import create_chat_model
 def test_create_chat_model_requires_model():
     settings = Settings(
         _env_file=None,
+        llm_model=None,
         llm_api_key="test-key",
     )
 
@@ -19,6 +20,7 @@ def test_create_chat_model_requires_model():
 def test_create_chat_model_requires_api_key():
     settings = Settings(
         _env_file=None,
+        llm_api_key=None,
         llm_model="test-model",
     )
 
