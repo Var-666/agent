@@ -25,28 +25,44 @@ def main() -> None:
         [read_file]
     )
 
-    message = HumanMessage(
+    messages = [HumanMessage(
         content=(
             "Read notes.txt from the workspace "
             "and tell me what it contains."
         )
-    )
+    )]
 
     response = model_with_tools.invoke(
-        [message]
+        messages
     )
+    
+    messages.append(response)
+    
+    if not response.tool_calls:
+      raise RuntimeError("Model did not request a tool")
     
     tool_call = response.tool_calls[0]
     tool_message = execute_tool_call(tool_call,[read_file])
-
-    print("content:")
-    print(response.content)
     
-    print("\ntool_result:")
-    print(tool_message)
+    messages.append(tool_message)
+    
+    final_response = model_with_tools.invoke(messages)
+    
+    print(final_response.text)
+    
+    for index, item in enumerate(messages):
+      print(
+          index,
+          type(item).__name__,
+      )
+      
+    print(
+        response.tool_calls[0]["id"]
+    )
 
-    print("\ntool_calls:")
-    print(response.tool_calls)
+    print(
+        tool_message.tool_call_id
+    )
 
 
 if __name__ == "__main__":
