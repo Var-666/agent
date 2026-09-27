@@ -90,3 +90,22 @@ def test_read_file_rejects_symlink_escape(
                 "path": "link.txt",
             }
         )
+        
+@pytest.mark.parametrize(
+    "path",
+    [
+        r"C:\secret.txt",
+        r"C:secret.txt",
+        r"..\secret.txt",
+    ],
+)
+def test_read_file_rejects_windows_escape(
+    tmp_path,
+    path,
+):
+    read_file = create_read_file_tool(
+        tmp_path
+    )
+
+    with pytest.raises(ValueError):
+        read_file.invoke({"path": path})
