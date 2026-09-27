@@ -5,9 +5,9 @@ from langchain_core.messages import HumanMessage
 
 from flow_agent.config import load_settings
 from flow_agent.models import create_chat_model
-from flow_agent.tools.file import (
-    create_read_file_tool,
-)
+from flow_agent.tools.file import create_read_file_tool
+from flow_agent.tools.executor import execute_tool_call
+
 
 
 def main() -> None:
@@ -35,9 +35,15 @@ def main() -> None:
     response = model_with_tools.invoke(
         [message]
     )
+    
+    tool_call = response.tool_calls[0]
+    tool_message = execute_tool_call(tool_call,[read_file])
 
     print("content:")
     print(response.content)
+    
+    print("\ntool_result:")
+    print(tool_message)
 
     print("\ntool_calls:")
     print(response.tool_calls)
