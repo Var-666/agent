@@ -35,6 +35,17 @@ def main() -> None:
     if not response.tool_calls:
       raise RuntimeError("Model did not request a tool")
     
+    unexpected_tools = {
+      tool_call["name"]
+      for tool_call in response.tool_calls
+      if tool_call["name"] != "read_file"
+    }
+
+    if unexpected_tools:
+        raise RuntimeError(
+            f"Model selected unexpected tools: {sorted(unexpected_tools)}"
+        )
+
     messages.append(response)
     
     tool_messages = execute_tool_calls(response.tool_calls,tools,run_id="smoke-run",task_id="smoke-task",)

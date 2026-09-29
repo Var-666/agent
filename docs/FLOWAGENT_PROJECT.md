@@ -4,7 +4,7 @@
 >
 > 文档用途：供项目开发者与 Codex 共同阅读，作为产品方向、架构边界、阶段计划和实现约束的统一基线。
 >
-> 当前里程碑：**v0.3 — Tool Executor**
+> 当前里程碑：**v0.4 — Bounded Autonomous Run**
 >
 > 已完成：**v0.1 — Domain Foundation；v0.2 — Goal → Structured Plan**
 >
@@ -588,6 +588,8 @@ batch、stream、async 必须有独立练习，但不作为 Structured Planner �
 ---
 
 ### v0.3 — Tool Executor
+
+**状态：已完成。** Tool 调用的超时会返回并记录错误，但同步工具线程无法被强制取消；带副作用的工具必须自行处理这一限制。文件工具的安全打开依赖 POSIX 目录句柄，非兼容平台会显式拒绝操作。
 
 **学习内容**：Tool Schema、`@tool`、`bind_tools`、Tool Calling Protocol、并行/串行调用、错误处理。
 
@@ -1393,8 +1395,8 @@ Keep domain logic independent from LangChain/LangGraph unless the current milest
 当前应回答：
 
 ```text
-Completed milestones: v0.1 — Domain Foundation; v0.2a — Structured Planner
-Current milestone: v0.3 — Tool Executor
-Next objective: implement a bounded manual Model → Tool → ToolMessage → Model cycle.
+Completed milestones: v0.1 — Domain Foundation; v0.2a — Structured Planner; v0.3 — Tool Executor
+Current milestone: v0.4 — Bounded Autonomous Run
+Next objective: execute a fixed plan, then add bounded retry and replan.
 Pending independent practice: v0.2b batch, stream, async.
 ```

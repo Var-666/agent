@@ -9,6 +9,7 @@ from flow_agent.tools.file import (
 
 import logging
 from threading import Barrier
+from threading import Event
 
 from langchain.tools import tool
 
@@ -69,6 +70,35 @@ def test_execute_tool_call_returns_error_message(
     assert message.tool_call_id == "call-001"
     assert message.status == "error"
     assert "missing.txt" in message.content
+
+
+def test_execute_tool_call_reports_timeout_without_waiting_for_tool(caplog):
+    release = Event()
+    started = Event()
+
+    @tool("slow")
+    def slow() -> str:
+        """Wait for an external operation."""
+        started.set()
+        release.wait(timeout=2)
+        return "late result"
+
+    try:
+        with caplog.at_level(logging.INFO, logger="flow_agent.tools.executor"):
+            message = execute_tool_call(
+                {"name": "slow", "args": {}, "id": "call-slow", "type": "tool_call"},
+                [slow],
+                run_id=RUN_ID,
+                task_id=TASK_ID,
+                timeout_seconds=0.01,
+            )
+
+        assert started.is_set()
+        assert message.status == "error"
+        assert "exceeded" in message.content
+        assert caplog.records[-1].error.startswith("TimeoutError:")
+    finally:
+        release.set()
     
 import pytest
 

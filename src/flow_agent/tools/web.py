@@ -51,7 +51,7 @@ def validate_public_url(url: str, *,
     resolver: AddressResolver = (
         resolve_host_addresses
     ),
-) -> None:
+) -> str:
     parsed = urlsplit(url)
 
     if parsed.scheme not in {"http", "https",}:
@@ -86,11 +86,14 @@ def validate_public_url(url: str, *,
         if not resolved_ip.is_global:
             raise ValueError("URL resolves to a non-public address")
 
+    return str(ip_address(addresses[0]))
+
 
 def _create_default_client() -> httpx.Client:
     return httpx.Client(
         timeout=DEFAULT_TIMEOUT_SECONDS,
         follow_redirects=False,
+        trust_env=False,
     )
 
 
@@ -110,9 +113,17 @@ def create_read_url_tool(
 
         with client_factory() as client:
             for redirect_count in range(max_redirects + 1):
-                validate_public_url(current_url,resolver=resolver)
+                approved_ip = validate_public_url(current_url,resolver=resolver)
+                parsed = urlsplit(current_url)
+                pinned_url = httpx.URL(current_url).copy_with(host=approved_ip)
 
-                with client.stream("GET",current_url) as response:
+                with client.stream(
+                    "GET",
+                    pinned_url,
+                    headers={"Host": parsed.netloc},
+                    extensions={"sni_hostname": parsed.hostname},
+                    follow_redirects=False,
+                ) as response:
 
                     if (response.status_code in _REDIRECT_STATUS_CODES):
                         if (redirect_count>= max_redirects):

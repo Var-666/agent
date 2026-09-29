@@ -20,15 +20,18 @@ FlowAgent 采用：
 ```text
 v0.1 — Domain Foundation ✅
 v0.2 — Goal → Structured Plan ✅
+v0.3 — Tool Executor ✅
 ```
 
 下一阶段：
 
 ```text
-v0.3 — Tool Executor
+v0.4 — Bounded Autonomous Run
 ```
 
-v0.1 建立了 FlowAgent 的工程基础和领域模型；v0.2 增加 Goal 到结构化计划的转换。
+v0.1 建立了 FlowAgent 的工程基础和领域模型；v0.2 增加 Goal 到结构化计划的转换；v0.3 增加手动 Tool Calling 循环、默认工具集和带上下文的执行日志。
+
+工具执行器默认 30 秒返回超时错误，但无法强制终止仍在运行的同步工具；涉及副作用的工具需自行保证安全。文件工具在支持 POSIX 目录句柄的平台上拒绝符号链接路径；URL 工具固定连接到验证过的公网 IP，并禁用环境代理。
 
 v0.1 覆盖：
 

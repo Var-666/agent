@@ -2,6 +2,8 @@ import logging
 from collections.abc import Iterable, Callable
 from time import perf_counter
 from concurrent.futures import ThreadPoolExecutor
+from queue import Empty, Queue
+from threading import Thread
 
 from langchain_core.messages import ToolCall, ToolMessage
 from langchain_core.tools import BaseTool
@@ -10,6 +12,29 @@ Clock = Callable[[],float]
 
 _LOGGER = logging.getLogger(__name__)
 DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4
+DEFAULT_TOOL_TIMEOUT_SECONDS = 30.0
+
+
+def _invoke_with_timeout(tool: BaseTool, args: dict, timeout_seconds: float):
+  result_queue: Queue = Queue(maxsize=1)
+
+  def invoke() -> None:
+    try:
+      result_queue.put((True, tool.invoke(args)))
+    except Exception as exc:
+      result_queue.put((False, exc))
+
+  Thread(target=invoke, daemon=True).start()
+
+  try:
+    succeeded, result = result_queue.get(timeout=timeout_seconds)
+  except Empty as exc:
+    raise TimeoutError(f"Tool exceeded {timeout_seconds:g} seconds") from exc
+
+  if not succeeded:
+    raise result
+
+  return result
 
 def execute_tool_call(
   tool_call: ToolCall, 
@@ -18,8 +43,12 @@ def execute_tool_call(
   run_id: str,
   task_id: str,
   clock: Clock = perf_counter,
-  logger: logging.Logger = _LOGGER
+  logger: logging.Logger = _LOGGER,
+  timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS,
 ) -> ToolMessage:
+
+  if timeout_seconds <= 0:
+    raise ValueError("timeout_seconds must be positive")
   
   if not run_id.strip():
     raise ValueError("run_id cannot be empty")
@@ -44,7 +73,7 @@ def execute_tool_call(
   error: str | None = None
   
   try:
-    result = tool.invoke(tool_call["args"])
+    result = _invoke_with_timeout(tool, tool_call["args"], timeout_seconds)
     
     message = ToolMessage(
       content=str(result),
@@ -98,6 +127,7 @@ def execute_tool_calls(
     task_id: str,
     clock: Clock = perf_counter,
     logger: logging.Logger = _LOGGER,
+    timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS,
 ) -> tuple[ToolMessage, ...]:
     available_tools = tuple(tools)
 
@@ -109,6 +139,7 @@ def execute_tool_calls(
             task_id=task_id,
             clock=clock,
             logger=logger,
+            timeout_seconds=timeout_seconds,
         )
         for tool_call in tool_calls
     )
@@ -121,7 +152,8 @@ def execute_tool_calls_parallel(
   task_id: str,
   max_workers: int = (DEFAULT_MAX_PARALLEL_TOOL_CALLS),
   clock: Clock = perf_counter,
-  logger: logging.Logger = _LOGGER
+  logger: logging.Logger = _LOGGER,
+  timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS,
 ) -> tuple[ToolMessage,...]:
   
   if max_workers < 1:
@@ -145,6 +177,7 @@ def execute_tool_calls_parallel(
         task_id=task_id,
         clock=clock,
         logger=logger,
+        timeout_seconds=timeout_seconds,
       )
       for tool_call in calls
     ]

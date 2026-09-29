@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from flow_agent.tools.web import (
+    _create_default_client,
     create_read_url_tool,
     validate_public_url,
 )
@@ -178,6 +179,34 @@ def test_read_url_reads_text_response():
     )
 
     assert result == "hello FlowAgent"
+
+
+def test_read_url_connects_only_to_validated_ip():
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/plain"},
+            content=b"safe",
+        )
+
+    read_url = create_read_url_tool(
+        resolver=public_resolver,
+        client_factory=make_client_factory(handler),
+    )
+
+    assert read_url.invoke({"url": "https://example.com:8443/page"}) == "safe"
+    assert str(requests[0].url) == f"https://{PUBLIC_IP}:8443/page"
+    assert requests[0].headers["Host"] == "example.com:8443"
+    assert requests[0].extensions["sni_hostname"] == "example.com"
+
+
+def test_default_client_does_not_use_environment_proxy(monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9999")
+    with _create_default_client() as client:
+        assert client._mounts == {}
     
 def test_read_url_reads_json_response():
     def handler(
@@ -308,7 +337,7 @@ def test_read_url_follows_safe_redirect():
             str(request.url)
         )
 
-        if request.url.host == "example.com":
+        if request.headers["Host"] == "example.com":
             return httpx.Response(
                 302,
                 headers={
@@ -342,8 +371,8 @@ def test_read_url_follows_safe_redirect():
     assert result == "redirected"
 
     assert requested_urls == [
-        "https://example.com/start",
-        "https://docs.example.com/final",
+        f"https://{PUBLIC_IP}/start",
+        f"https://{PUBLIC_IP}/final",
     ]
     
 def test_read_url_rejects_redirect_to_private_address():
@@ -397,7 +426,7 @@ def test_read_url_rejects_redirect_to_private_address():
         )
 
     assert requested_urls == [
-        "https://example.com/start",
+        f"https://{PUBLIC_IP}/start",
     ]
     
 def test_read_url_rejects_too_many_redirects():
