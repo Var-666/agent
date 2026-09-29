@@ -61,7 +61,7 @@ def create_read_file_tool(workspace_root: Path) -> BaseTool:
 
 def create_write_file_tool(workspace_root: Path) -> BaseTool:
   
-  @tool
+  @tool("write_file")
   def write_file(path: str, content: str) -> str:
     """Write UTF-8 text to a file in the current workspace."""
     
