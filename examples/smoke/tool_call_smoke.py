@@ -41,7 +41,7 @@ def main() -> None:
     
     messages.append(response)
     
-    tool_messages = execute_tool_calls(response.tool_calls,[read_file])
+    tool_messages = execute_tool_calls(response.tool_calls,[read_file],run_id="smoke-run",task_id="smoke-task",)
     
     messages.extend(tool_messages)
     

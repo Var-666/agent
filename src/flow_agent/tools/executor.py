@@ -1,9 +1,30 @@
-from collections.abc import Iterable
+import logging
+from collections.abc import Iterable, Callable
+from time import perf_counter
 
 from langchain_core.messages import ToolCall, ToolMessage
 from langchain_core.tools import BaseTool
 
-def execute_tool_call(tool_call: ToolCall, tools: Iterable[BaseTool]) -> ToolMessage:
+Clock = Callable[[],float]
+
+_LOGGER = logging.getLogger(__name__)
+
+def execute_tool_call(
+  tool_call: ToolCall, 
+  tools: Iterable[BaseTool],
+  *,
+  run_id: str,
+  task_id: str,
+  clock: Clock = perf_counter,
+  logger: logging.Logger = _LOGGER
+) -> ToolMessage:
+  
+  if not run_id.strip():
+    raise ValueError("run_id cannot be empty")
+  
+  if not task_id.strip():
+    raise ValueError("task_id cannot be empty")
+  
   tool_by_name = _index_tools(tools)
   
   tool_name = tool_call["name"]
@@ -17,28 +38,78 @@ def execute_tool_call(tool_call: ToolCall, tools: Iterable[BaseTool]) -> ToolMes
   
   tool = tool_by_name[tool_name]
   
+  started_at = clock()
+  error: str | None = None
+  
   try:
     result = tool.invoke(tool_call["args"])
+    
+    message = ToolMessage(
+      content=str(result),
+      tool_call_id=tool_call_id,
+      status="success"
+    )
   except Exception as exc:
-    return ToolMessage(
+    error = (f"{type(exc).__name__}:{exc}")
+    
+    message =  ToolMessage(
       content=str(exc),
       tool_call_id=tool_call_id,
       status="error"
     )
     
-  return ToolMessage(
-        content=str(result),
-        tool_call_id=tool_call_id,
-        status="success",
+  latency_ms = (clock() - started_at) * 1000
+  
+  logger.info(
+        (
+            "tool_call "
+            "run_id=%s "
+            "task_id=%s "
+            "tool_call_id=%s "
+            "tool_name=%s "
+            "latency_ms=%.3f "
+            "error=%s"
+        ),
+        run_id,
+        task_id,
+        tool_call_id,
+        tool_name,
+        latency_ms,
+        error,
+        extra={
+            "run_id": run_id,
+            "task_id": task_id,
+            "tool_call_id": tool_call_id,
+            "tool_name": tool_name,
+            "latency_ms": latency_ms,
+            "error": error,
+        },
     )
+
+  return message
   
-def execute_tool_calls(tool_calls:Iterable[ToolCall], tools:Iterable[BaseTool]) -> tuple[ToolMessage,...]:
-  available_tools = tuple(tools)
-  
-  return tuple(
-    execute_tool_call(tool_call,available_tools)
-    for tool_call in tool_calls
-  )
+def execute_tool_calls(
+    tool_calls: Iterable[ToolCall],
+    tools: Iterable[BaseTool],
+    *,
+    run_id: str,
+    task_id: str,
+    clock: Clock = perf_counter,
+    logger: logging.Logger = _LOGGER,
+) -> tuple[ToolMessage, ...]:
+    available_tools = tuple(tools)
+
+    return tuple(
+        execute_tool_call(
+            tool_call,
+            available_tools,
+            run_id=run_id,
+            task_id=task_id,
+            clock=clock,
+            logger=logger,
+        )
+        for tool_call in tool_calls
+    )
   
 def _index_tools(tools: Iterable[BaseTool]) -> dict[str,BaseTool]:
   tool_by_name: dict[str, BaseTool] = {}
