@@ -1,12 +1,16 @@
 from flow_agent.tools.executor import (
     execute_tool_call,
     execute_tool_calls,
+    execute_tool_calls_parallel
 )
 from flow_agent.tools.file import (
     create_read_file_tool,
 )
 
 import logging
+from threading import Barrier
+
+from langchain.tools import tool
 
 RUN_ID = "run-001"
 TASK_ID = "task-001"
@@ -465,4 +469,268 @@ def test_execute_multiple_tool_calls_records_each_call(
             100.0,
             200.0,
         ]
+    )
+    
+def test_execute_tool_calls_parallel_runs_concurrently():
+    barrier = Barrier(2)
+
+    @tool("first")
+    def first() -> str:
+        """Run the first independent operation."""
+        barrier.wait(timeout=1)
+        return "first result"
+
+    @tool("second")
+    def second() -> str:
+        """Run the second independent operation."""
+        barrier.wait(timeout=1)
+        return "second result"
+
+    messages = execute_tool_calls_parallel(
+        [
+            {
+                "name": "first",
+                "args": {},
+                "id": "call-first",
+                "type": "tool_call",
+            },
+            {
+                "name": "second",
+                "args": {},
+                "id": "call-second",
+                "type": "tool_call",
+            },
+        ],
+        [
+            first,
+            second,
+        ],
+        run_id=RUN_ID,
+        task_id=TASK_ID,
+        max_workers=2,
+    )
+
+    assert [
+        message.content
+        for message in messages
+    ] == [
+        "first result",
+        "second result",
+    ]
+
+    assert [
+        message.tool_call_id
+        for message in messages
+    ] == [
+        "call-first",
+        "call-second",
+    ]
+    
+from threading import Event
+
+
+def test_execute_tool_calls_parallel_preserves_order():
+    first_started = Event()
+    second_finished = Event()
+
+    @tool("slow_first")
+    def slow_first() -> str:
+        """Run the first operation."""
+
+        first_started.set()
+
+        if not second_finished.wait(
+            timeout=1
+        ):
+            raise RuntimeError(
+                "Second tool did not finish"
+            )
+
+        return "first"
+
+    @tool("fast_second")
+    def fast_second() -> str:
+        """Run the second operation."""
+
+        if not first_started.wait(
+            timeout=1
+        ):
+            raise RuntimeError(
+                "First tool did not start"
+            )
+
+        second_finished.set()
+
+        return "second"
+
+    messages = execute_tool_calls_parallel(
+        [
+            {
+                "name": "slow_first",
+                "args": {},
+                "id": "call-a",
+                "type": "tool_call",
+            },
+            {
+                "name": "fast_second",
+                "args": {},
+                "id": "call-b",
+                "type": "tool_call",
+            },
+        ],
+        [
+            slow_first,
+            fast_second,
+        ],
+        run_id=RUN_ID,
+        task_id=TASK_ID,
+        max_workers=2,
+    )
+
+    assert [
+        message.tool_call_id
+        for message in messages
+    ] == [
+        "call-a",
+        "call-b",
+    ]
+    
+def test_execute_tool_calls_parallel_keeps_errors():
+    barrier = Barrier(2)
+
+    @tool("successful")
+    def successful() -> str:
+        """Return a successful result."""
+        barrier.wait(timeout=1)
+        return "ok"
+
+    @tool("failing")
+    def failing() -> str:
+        """Fail during execution."""
+        barrier.wait(timeout=1)
+        raise RuntimeError(
+            "tool failed"
+        )
+
+    messages = execute_tool_calls_parallel(
+        [
+            {
+                "name": "successful",
+                "args": {},
+                "id": "call-success",
+                "type": "tool_call",
+            },
+            {
+                "name": "failing",
+                "args": {},
+                "id": "call-error",
+                "type": "tool_call",
+            },
+        ],
+        [
+            successful,
+            failing,
+        ],
+        run_id=RUN_ID,
+        task_id=TASK_ID,
+        max_workers=2,
+    )
+
+    assert messages[0].status == "success"
+    assert messages[0].content == "ok"
+
+    assert messages[1].status == "error"
+    assert "tool failed" in messages[1].content
+    
+@pytest.mark.parametrize(
+    "max_workers",
+    [
+        0,
+        -1,
+    ],
+)
+def test_execute_tool_calls_parallel_rejects_invalid_worker_count(
+    max_workers,
+):
+    with pytest.raises(
+        ValueError,
+        match="at least 1",
+    ):
+        execute_tool_calls_parallel(
+            [],
+            [],
+            run_id=RUN_ID,
+            task_id=TASK_ID,
+            max_workers=max_workers,
+        )
+        
+def test_execute_tool_calls_parallel_records_each_call(
+    caplog,
+):
+    barrier = Barrier(2)
+
+    @tool("first")
+    def first() -> str:
+        """Run first."""
+        barrier.wait(timeout=1)
+        return "A"
+
+    @tool("second")
+    def second() -> str:
+        """Run second."""
+        barrier.wait(timeout=1)
+        return "B"
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="flow_agent.tools.executor",
+    ):
+        execute_tool_calls_parallel(
+            [
+                {
+                    "name": "first",
+                    "args": {},
+                    "id": "call-a",
+                    "type": "tool_call",
+                },
+                {
+                    "name": "second",
+                    "args": {},
+                    "id": "call-b",
+                    "type": "tool_call",
+                },
+            ],
+            [
+                first,
+                second,
+            ],
+            run_id=RUN_ID,
+            task_id=TASK_ID,
+            max_workers=2,
+        )
+
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith(
+            "tool_call "
+        )
+    ]
+
+    assert {
+        record.tool_call_id
+        for record in records
+    } == {
+        "call-a",
+        "call-b",
+    }
+
+    assert all(
+        record.run_id == RUN_ID
+        for record in records
+    )
+
+    assert all(
+        record.task_id == TASK_ID
+        for record in records
     )
