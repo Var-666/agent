@@ -8,6 +8,8 @@ from flow_agent.models import create_chat_model
 from flow_agent.tools.file import create_read_file_tool
 from flow_agent.tools.executor import execute_tool_call,execute_tool_calls
 
+from flow_agent.tools.factory import create_default_tools
+
 
 
 def main() -> None:
@@ -17,13 +19,9 @@ def main() -> None:
 
     model = create_chat_model(settings)
 
-    read_file = create_read_file_tool(
-        Path("workspace")
-    )
+    tools = create_default_tools(settings.workspace_root)
 
-    model_with_tools = model.bind_tools(
-        [read_file]
-    )
+    model_with_tools = model.bind_tools(tools)
 
     messages = [HumanMessage(
         content=(
@@ -32,16 +30,14 @@ def main() -> None:
         )
     )]
 
-    response = model_with_tools.invoke(
-        messages
-    )
+    response = model_with_tools.invoke(messages)
     
     if not response.tool_calls:
       raise RuntimeError("Model did not request a tool")
     
     messages.append(response)
     
-    tool_messages = execute_tool_calls(response.tool_calls,[read_file],run_id="smoke-run",task_id="smoke-task",)
+    tool_messages = execute_tool_calls(response.tool_calls,tools,run_id="smoke-run",task_id="smoke-task",)
     
     messages.extend(tool_messages)
     
@@ -49,10 +45,7 @@ def main() -> None:
     
     print(final_response.text)
     
-    print(
-    "tool calls:",
-    len(response.tool_calls),
-)
+    print("tool calls:",len(response.tool_calls))
 
     for tool_call in response.tool_calls:
         print(
@@ -67,6 +60,13 @@ def main() -> None:
             tool_message.status,
             tool_message.content,
         )
+        
+    print("available tools:",
+      [
+          tool.name
+          for tool in tools
+      ],
+    )
 
 
 if __name__ == "__main__":
