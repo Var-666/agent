@@ -72,7 +72,7 @@ def run_bounded_agent_loop(
         tool_calls=total_tool_calls
       )
       
-    # Tool result must eventually be consumed by another model turn
+    # Tool 结果最终必须由另一个模型轮次进行消费。
     if steps >= max_steps:
       raise AgentStepLimitExceeded(max_steps)
     
