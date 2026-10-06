@@ -191,40 +191,6 @@ def test_execute_fixed_plan_stops_after_task_failure():
         exc_info.value.__cause__,
         RuntimeError,
     )
-    
-@pytest.mark.parametrize(
-    "status",
-    [
-        RunStatus.QUEUED,
-        RunStatus.RUNNING,
-    ],
-)
-def test_execute_fixed_plan_requires_planning_run(
-    status,
-):
-    run = create_run_from_plan(
-        make_plan()
-    )
-
-    if status == RunStatus.QUEUED:
-        object.__setattr__(
-            run,
-            "status",
-            RunStatus.QUEUED,
-        )
-    else:
-        run.transition_to(
-            RunStatus.RUNNING
-        )
-
-    with pytest.raises(
-        ValueError,
-        match="PLANNING",
-    ):
-        execute_fixed_plan(
-            run,
-            lambda task: None,
-        )
       
 def test_execute_fixed_plan_rejects_queued_run():
     run = Run(
@@ -239,6 +205,29 @@ def test_execute_fixed_plan_rejects_queued_run():
             run,
             lambda task: None,
         )
+        
+def test_execute_fixed_plan_rejects_running_run():
+    run = create_run_from_plan(
+        make_plan()
+    )
+
+    run.transition_to(
+        RunStatus.RUNNING
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="PLANNING",
+    ):
+        execute_fixed_plan(
+            run,
+            lambda task: None,
+        )
+
+    assert (
+        run.status
+        == RunStatus.RUNNING
+    )
         
 def test_fixed_plan_waits_for_dependencies():
     dependency = Task(
@@ -407,9 +396,9 @@ def test_execute_fixed_plan_stops_when_run_time_expires():
 
     ticks = iter(
         [
-            0.0,
-            0.0,
-            2.0,
+            0.0,  # Run start
+            0.0,  # Before Research
+            2.0,  # Before Write report
         ]
     )
 
@@ -428,20 +417,24 @@ def test_execute_fixed_plan_stops_when_run_time_expires():
             clock=lambda: next(ticks),
             event_sink=events.append,
         )
-        
+
+    assert executed == [
+        "Research",
+    ]
+
     assert (
-    run.tasks[0].status
-    == TaskStatus.COMPLETED
+        run.tasks[0].status
+        == TaskStatus.COMPLETED
     )
 
     assert (
         run.tasks[1].status
         == TaskStatus.PENDING
     )
-    
+
     assert (
-    run.status
-    == RunStatus.FAILED
+        run.status
+        == RunStatus.FAILED
     )
 
     assert (
@@ -465,8 +458,8 @@ def test_run_time_limit_prevents_first_task():
 
     ticks = iter(
         [
-            0.0,
-            1.0,
+            0.0,  # Run start
+            1.0,  # Before first task
         ]
     )
 
@@ -483,6 +476,32 @@ def test_run_time_limit_prevents_first_task():
             clock=lambda: next(ticks),
             event_sink=events.append,
         )
+
+    assert executed == []
+
+    assert all(
+        task.status
+        == TaskStatus.PENDING
+        for task in run.tasks
+    )
+
+    assert (
+        run.status
+        == RunStatus.FAILED
+    )
+
+    assert [
+        event.kind
+        for event in events
+    ] == [
+        RunEventKind.RUN_STARTED,
+        RunEventKind.RUN_FAILED,
+    ]
+
+    assert (
+        events[-1].payload["reason"]
+        == "time_limit_exceeded"
+    )
         
 def test_run_time_limit_is_checked_after_last_task():
     plan = ExecutionPlan(
@@ -506,9 +525,9 @@ def test_run_time_limit_is_checked_after_last_task():
 
     ticks = iter(
         [
-            0.0,  # start
-            0.0,  # before task
-            2.0,  # after final task
+            0.0,  # Run start
+            0.0,  # Before task
+            2.0,  # After final task
         ]
     )
 
@@ -525,18 +544,37 @@ def test_run_time_limit_is_checked_after_last_task():
             clock=lambda: next(ticks),
             event_sink=events.append,
         )
-        
+
+    assert executed == [
+        "Only task",
+    ]
+
     assert (
-    RunEventKind.RUN_COMPLETED
-    not in {
-        event.kind
-        for event in events
-    }
+        run.tasks[0].status
+        == TaskStatus.COMPLETED
+    )
+
+    assert (
+        run.status
+        == RunStatus.FAILED
+    )
+
+    assert (
+        RunEventKind.RUN_COMPLETED
+        not in {
+            event.kind
+            for event in events
+        }
     )
 
     assert (
         events[-1].kind
         == RunEventKind.RUN_FAILED
+    )
+
+    assert (
+        events[-1].payload["reason"]
+        == "time_limit_exceeded"
     )
     
 @pytest.mark.parametrize(
@@ -565,6 +603,17 @@ def test_execute_fixed_plan_rejects_invalid_run_budget(
                 max_run_seconds
             ),
         )
+
+    assert (
+        run.status
+        == RunStatus.PLANNING
+    )
+
+    assert all(
+        task.status
+        == TaskStatus.PENDING
+        for task in run.tasks
+    )
         
 def test_execute_fixed_plan_does_not_require_event_sink():
     run = create_run_from_plan(
