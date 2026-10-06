@@ -37,7 +37,7 @@ class Run(BaseModel):
     _ALLOWED_TRANSITIONS: ClassVar[dict[RunStatus, frozenset[RunStatus]]] = {
         RunStatus.QUEUED: frozenset({RunStatus.PLANNING,RunStatus.CANCELLED,}),
         RunStatus.PLANNING: frozenset({RunStatus.RUNNING,RunStatus.WAITING_USER,RunStatus.BLOCKED,RunStatus.FAILED,RunStatus.CANCELLED,}),
-        RunStatus.RUNNING: frozenset({RunStatus.WAITING_USER,RunStatus.WAITING_APPROVAL,RunStatus.WAITING_EXTERNAL,RunStatus.BLOCKED,RunStatus.COMPLETED,RunStatus.FAILED,RunStatus.CANCELLED,}),
+        RunStatus.RUNNING: frozenset({RunStatus.PLANNING,RunStatus.WAITING_USER,RunStatus.WAITING_APPROVAL,RunStatus.WAITING_EXTERNAL,RunStatus.BLOCKED,RunStatus.COMPLETED,RunStatus.FAILED,RunStatus.CANCELLED,}),
         RunStatus.WAITING_USER: frozenset({RunStatus.RUNNING,RunStatus.BLOCKED,RunStatus.FAILED,RunStatus.CANCELLED,}),
         RunStatus.WAITING_APPROVAL: frozenset({RunStatus.RUNNING,RunStatus.BLOCKED,RunStatus.FAILED,RunStatus.CANCELLED,}),
         RunStatus.WAITING_EXTERNAL: frozenset({RunStatus.RUNNING,RunStatus.BLOCKED,RunStatus.FAILED,RunStatus.CANCELLED,}),

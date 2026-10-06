@@ -16,7 +16,9 @@ from flow_agent.runtime.plan_executor import (
     RunTimeLimitExceeded,
     create_run_from_plan,
     execute_fixed_plan,
-    RetryableTaskError
+    RetryableTaskError,
+    ReplanCandidateError,
+    ReplanRequired,
 )
 
 
@@ -926,4 +928,201 @@ def test_fixed_plan_rejects_negative_task_retry_budget():
     assert (
         run.tasks[0].status
         == TaskStatus.PENDING
+    )
+    
+def test_fixed_plan_pauses_when_replan_is_allowed():
+    run = create_run_from_plan(
+        make_single_task_plan()
+    )
+
+    events = []
+    policy_calls = []
+
+    def task_runner(task):
+        raise ReplanCandidateError(
+            "tool arguments do not fit plan"
+        )
+
+    def replan_policy(
+        candidate_run,
+        task,
+        error,
+    ):
+        policy_calls.append(
+            (
+                candidate_run,
+                task,
+                error,
+            )
+        )
+
+        return True
+
+    with pytest.raises(
+        ReplanRequired
+    ) as exc_info:
+        execute_fixed_plan(
+            run,
+            task_runner,
+            replan_policy=replan_policy,
+            clock=lambda: 0.0,
+            event_sink=events.append,
+        )
+
+    assert (
+        exc_info.value.task_id
+        == run.tasks[0].id
+    )
+
+    assert isinstance(
+        exc_info.value.__cause__,
+        ReplanCandidateError,
+    )
+
+    assert len(policy_calls) == 1
+
+    policy_run, policy_task, policy_error = (
+        policy_calls[0]
+    )
+
+    assert policy_run is run
+    assert policy_task is run.tasks[0]
+
+    assert isinstance(
+        policy_error,
+        ReplanCandidateError,
+    )
+
+    assert (
+        run.tasks[0].status
+        == TaskStatus.WAITING
+    )
+
+    assert (
+        run.status
+        == RunStatus.PLANNING
+    )
+
+    assert run.finished_at is None
+
+    assert [
+        event.kind
+        for event in events
+    ] == [
+        RunEventKind.RUN_STARTED,
+        RunEventKind.TASK_STARTED,
+        RunEventKind.REPLAN_REQUESTED,
+    ]
+
+    replan_event = events[-1]
+
+    assert (
+        replan_event.task_id
+        == run.tasks[0].id
+    )
+
+    assert replan_event.payload == {
+        "error_type":
+            "ReplanCandidateError",
+        "error":
+            "tool arguments do not fit plan",
+    }
+    
+def test_fixed_plan_denies_replan_by_default():
+    run = create_run_from_plan(
+        make_single_task_plan()
+    )
+
+    events = []
+
+    def task_runner(task):
+        raise ReplanCandidateError(
+            "plan cannot continue"
+        )
+
+    with pytest.raises(
+        FixedPlanExecutionError
+    ) as exc_info:
+        execute_fixed_plan(
+            run,
+            task_runner,
+            clock=lambda: 0.0,
+            event_sink=events.append,
+        )
+
+    assert (
+        run.tasks[0].status
+        == TaskStatus.FAILED
+    )
+
+    assert (
+        run.status
+        == RunStatus.FAILED
+    )
+
+    assert (
+        RunEventKind.REPLAN_REQUESTED
+        not in {
+            event.kind
+            for event in events
+        }
+    )
+
+    assert [
+        event.kind
+        for event in events
+    ] == [
+        RunEventKind.RUN_STARTED,
+        RunEventKind.TASK_STARTED,
+        RunEventKind.TASK_FAILED,
+        RunEventKind.RUN_FAILED,
+    ]
+
+    assert isinstance(
+        exc_info.value.__cause__,
+        ReplanCandidateError,
+    )
+    
+def test_fixed_plan_fails_when_replan_policy_denies():
+    run = create_run_from_plan(
+        make_single_task_plan()
+    )
+
+    policy_calls = 0
+
+    def task_runner(task):
+        raise ReplanCandidateError(
+            "bad execution strategy"
+        )
+
+    def replan_policy(
+        candidate_run,
+        task,
+        error,
+    ):
+        nonlocal policy_calls
+        policy_calls += 1
+
+        return False
+
+    with pytest.raises(
+        FixedPlanExecutionError
+    ):
+        execute_fixed_plan(
+            run,
+            task_runner,
+            replan_policy=replan_policy,
+            clock=lambda: 0.0,
+        )
+
+    assert policy_calls == 1
+
+    assert (
+        run.tasks[0].status
+        == TaskStatus.FAILED
+    )
+
+    assert (
+        run.status
+        == RunStatus.FAILED
     )

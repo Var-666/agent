@@ -510,3 +510,34 @@ def test_run_rejects_finished_at_before_started_at():
             started_at=started_at,
             finished_at=finished_at,
         )
+
+def test_running_run_can_return_to_planning_for_replan():
+    run = Run(
+        goal_id="goal-001"
+    )
+
+    run.transition_to(
+        RunStatus.PLANNING
+    )
+
+    run.transition_to(
+        RunStatus.RUNNING
+    )
+
+    started_at = run.started_at
+
+    run.transition_to(
+        RunStatus.PLANNING
+    )
+
+    assert (
+        run.status
+        == RunStatus.PLANNING
+    )
+
+    assert (
+        run.started_at
+        == started_at
+    )
+
+    assert run.finished_at is None

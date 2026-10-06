@@ -8,6 +8,7 @@ Clock = Callable[[],float]
 EventSink = Callable[[RunEvent],None]
 TaskRunner = Callable[[Task],None]
 
+
 DEFAULT_MAX_RUN_SECONDS = 300.0
 DEFAULT_MAX_TASK_RETRIES = 2
 
@@ -23,6 +24,16 @@ class RunTimeLimitExceeded(RuntimeError):
     
 class RetryableTaskError(RuntimeError):
    """A task failure that may be retried."""
+   
+class ReplanCandidateError(RuntimeError):
+    """A task failure that may require replanning."""
+
+class ReplanRequired(RuntimeError):
+  def __init__(self, task_id: str,) -> None:
+      self.task_id = task_id
+      super().__init__("Task requires replanning: " f"{task_id}")
+      
+ReplanPolicy = Callable[[Run,Task,ReplanCandidateError,], bool,]
 
 def create_run_from_plan(plan: ExecutionPlan) -> Run:
   run = Run(goal_id=plan.goal_id)
@@ -39,6 +50,7 @@ def execute_fixed_plan(
     *,
     max_run_seconds: float = DEFAULT_MAX_RUN_SECONDS,
     max_task_retries: int = DEFAULT_MAX_TASK_RETRIES,
+    replan_policy: ReplanPolicy | None = None,
     clock: Clock = perf_counter,
     event_sink: EventSink | None = None,
 ) -> Run:
@@ -66,8 +78,7 @@ def execute_fixed_plan(
         for task in run.tasks
     }
 
-    # Outer loop:
-    # schedule tasks in the fixed plan.
+    # Outer loop: schedule tasks in the fixed plan.
     while True:
         pending_tasks = [
             task
@@ -121,14 +132,12 @@ def execute_fixed_plan(
 
         retry_count = 0
 
-        # Inner loop:
-        # execute attempts for this task.
+        # Inner loop: execute attempts for this task.
         while True:
             try:
                 task_runner(ready_task)
 
-                # Task attempt succeeded.
-                # Exit only the retry loop.
+                # Task attempt succeeded, Exit only the retry loop.
                 break
 
             except RetryableTaskError as exc:
@@ -167,6 +176,31 @@ def execute_fixed_plan(
                     },
                 )
 
+            except ReplanCandidateError as exc:
+              if (replan_policy is None or not replan_policy(run,ready_task,exc)):
+                _fail_task_and_run(
+                  run=run,
+                  task=ready_task,
+                  error=exc,
+                  event_sink=event_sink
+                )
+                
+              ready_task.transition_to(TaskStatus.WAITING)
+              run.transition_to(RunStatus.PLANNING)
+              
+              _emit_event(
+                  run=run,
+                  task_id=ready_task.id,
+                  kind=RunEventKind.REPLAN_REQUESTED,
+                  event_sink=event_sink,
+                  payload={
+                      "error_type":type(exc).__name__,
+                      "error":str(exc),
+                  },
+              )
+
+              raise ReplanRequired(ready_task.id) from exc
+            
             except Exception as exc:
                 # Non-retryable errors fail
                 # immediately.
