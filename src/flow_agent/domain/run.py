@@ -130,16 +130,16 @@ class Run(BaseModel):
 
         object.__setattr__(self, "status", target_status)
 
-    def supersede_unfinished_tasks(self,repalcement_task: tuple[Task, ...]) -> tuple[str,...]:
+    def supersede_unfinished_tasks(self,replacement_tasks: tuple[Task, ...]) -> tuple[str,...]:
         self._ensure_mutable()
         
         if self.status != RunStatus.PLANNING:
             raise ValueError("Run must be in PLANNING state to supersede unfinished tasks")
         
-        if not repalcement_task:
+        if not replacement_tasks:
             raise ValueError("Replacement tasks cannot be empty")
         
-        candidate_tasks = self.tasks + repalcement_task
+        candidate_tasks = self.tasks + replacement_tasks
         
         self._validate_task_collection(candidate_tasks)
         
