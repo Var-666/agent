@@ -16,6 +16,7 @@ from flow_agent.runtime.plan_executor import (
     RunTimeLimitExceeded,
     create_run_from_plan,
     execute_fixed_plan,
+    RetryableTaskError
 )
 
 
@@ -631,3 +632,298 @@ def test_execute_fixed_plan_does_not_require_event_sink():
         == RunStatus.COMPLETED
     )
     
+def make_single_task_plan() -> ExecutionPlan:
+    return ExecutionPlan(
+        goal_id="goal-001",
+        summary="Single task",
+        tasks=(
+            PlanTask(
+                key="research",
+                title="Research",
+                description=(
+                    "Research sources"
+                ),
+            ),
+        ),
+    )
+    
+def test_fixed_plan_retries_retryable_task():
+    run = create_run_from_plan(
+        make_single_task_plan()
+    )
+
+    attempts = 0
+    events = []
+
+    def task_runner(task):
+        nonlocal attempts
+        attempts += 1
+
+        if attempts == 1:
+            raise RetryableTaskError(
+                "temporary provider failure"
+            )
+
+    result = execute_fixed_plan(
+        run,
+        task_runner,
+        max_task_retries=2,
+        clock=lambda: 0.0,
+        event_sink=events.append,
+    )
+
+    assert result is run
+    assert attempts == 2
+
+    assert (
+        run.tasks[0].status
+        == TaskStatus.COMPLETED
+    )
+
+    assert (
+        run.status
+        == RunStatus.COMPLETED
+    )
+
+    assert [
+        event.kind
+        for event in events
+    ] == [
+        RunEventKind.RUN_STARTED,
+        RunEventKind.TASK_STARTED,
+        RunEventKind.TASK_RETRYING,
+        RunEventKind.TASK_COMPLETED,
+        RunEventKind.RUN_COMPLETED,
+    ]
+
+    retry_event = events[2]
+
+    assert retry_event.payload == {
+        "retry_number": 1,
+        "max_task_retries": 2,
+        "error_type":
+            "RetryableTaskError",
+        "error":
+            "temporary provider failure",
+    }
+    
+def test_fixed_plan_fails_after_retry_budget_exhausted():
+    run = create_run_from_plan(
+        make_single_task_plan()
+    )
+
+    attempts = 0
+    events = []
+
+    def task_runner(task):
+        nonlocal attempts
+        attempts += 1
+
+        raise RetryableTaskError(
+            "still unavailable"
+        )
+
+    with pytest.raises(
+        FixedPlanExecutionError
+    ) as exc_info:
+        execute_fixed_plan(
+            run,
+            task_runner,
+            max_task_retries=2,
+            clock=lambda: 0.0,
+            event_sink=events.append,
+        )
+
+    assert attempts == 3
+
+    assert (
+        run.tasks[0].status
+        == TaskStatus.FAILED
+    )
+
+    assert (
+        run.status
+        == RunStatus.FAILED
+    )
+
+    assert [
+        event.kind
+        for event in events
+    ] == [
+        RunEventKind.RUN_STARTED,
+        RunEventKind.TASK_STARTED,
+        RunEventKind.TASK_RETRYING,
+        RunEventKind.TASK_RETRYING,
+        RunEventKind.TASK_FAILED,
+        RunEventKind.RUN_FAILED,
+    ]
+
+    retry_events = [
+        event
+        for event in events
+        if (
+            event.kind
+            == RunEventKind.TASK_RETRYING
+        )
+    ]
+
+    assert [
+        event.payload["retry_number"]
+        for event in retry_events
+    ] == [
+        1,
+        2,
+    ]
+
+    assert isinstance(
+        exc_info.value.__cause__,
+        RetryableTaskError,
+    )
+    
+def test_fixed_plan_does_not_retry_non_retryable_error():
+    run = create_run_from_plan(
+        make_single_task_plan()
+    )
+
+    attempts = 0
+    events = []
+
+    def task_runner(task):
+        nonlocal attempts
+        attempts += 1
+
+        raise ValueError(
+            "invalid task input"
+        )
+
+    with pytest.raises(
+        FixedPlanExecutionError
+    ) as exc_info:
+        execute_fixed_plan(
+            run,
+            task_runner,
+            max_task_retries=5,
+            clock=lambda: 0.0,
+            event_sink=events.append,
+        )
+
+    assert attempts == 1
+
+    assert (
+        RunEventKind.TASK_RETRYING
+        not in {
+            event.kind
+            for event in events
+        }
+    )
+
+    assert (
+        run.tasks[0].status
+        == TaskStatus.FAILED
+    )
+
+    assert (
+        run.status
+        == RunStatus.FAILED
+    )
+
+    assert isinstance(
+        exc_info.value.__cause__,
+        ValueError,
+    )
+    
+def test_run_time_limit_prevents_task_retry():
+    run = create_run_from_plan(
+        make_single_task_plan()
+    )
+
+    attempts = 0
+    events = []
+
+    ticks = iter(
+        [
+            0.0,  # Run start
+            0.0,  # Before initial task
+            2.0,  # Before retry
+        ]
+    )
+
+    def task_runner(task):
+        nonlocal attempts
+        attempts += 1
+
+        raise RetryableTaskError(
+            "temporary failure"
+        )
+
+    with pytest.raises(
+        RunTimeLimitExceeded
+    ):
+        execute_fixed_plan(
+            run,
+            task_runner,
+            max_run_seconds=1.0,
+            max_task_retries=3,
+            clock=lambda: next(ticks),
+            event_sink=events.append,
+        )
+
+    assert attempts == 1
+
+    assert (
+        run.tasks[0].status
+        == TaskStatus.FAILED
+    )
+
+    assert (
+        run.status
+        == RunStatus.FAILED
+    )
+
+    assert (
+        RunEventKind.TASK_RETRYING
+        not in {
+            event.kind
+            for event in events
+        }
+    )
+
+    assert [
+        event.kind
+        for event in events
+    ] == [
+        RunEventKind.RUN_STARTED,
+        RunEventKind.TASK_STARTED,
+        RunEventKind.TASK_FAILED,
+        RunEventKind.RUN_FAILED,
+    ]
+
+    assert (
+        events[-1].payload["reason"]
+        == "time_limit_exceeded"
+    )
+    
+def test_fixed_plan_rejects_negative_task_retry_budget():
+    run = create_run_from_plan(
+        make_single_task_plan()
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="max_task_retries",
+    ):
+        execute_fixed_plan(
+            run,
+            lambda task: None,
+            max_task_retries=-1,
+        )
+
+    assert (
+        run.status
+        == RunStatus.PLANNING
+    )
+
+    assert (
+        run.tasks[0].status
+        == TaskStatus.PENDING
+    )
