@@ -240,7 +240,6 @@ def test_execute_fixed_plan_rejects_queued_run():
         )
         
 from flow_agent.domain import Task
-
 def test_fixed_plan_waits_for_dependencies():
     dependency = Task(
         title="Dependency",
