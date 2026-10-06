@@ -18,20 +18,9 @@ class TaskStatus(StrEnum):
 
 class Task(BaseModel):
     _ALLOWED_TRANSITIONS: ClassVar[dict[TaskStatus, frozenset[TaskStatus]]] = {
-        TaskStatus.PENDING: frozenset(
-            {TaskStatus.RUNNING, TaskStatus.SKIPPED, TaskStatus.CANCELLED}
-        ),
-        TaskStatus.RUNNING: frozenset(
-            {
-                TaskStatus.WAITING,
-                TaskStatus.COMPLETED,
-                TaskStatus.FAILED,
-                TaskStatus.CANCELLED,
-            }
-        ),
-        TaskStatus.WAITING: frozenset(
-            {TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.CANCELLED}
-        ),
+        TaskStatus.PENDING: frozenset({TaskStatus.RUNNING, TaskStatus.SKIPPED, TaskStatus.CANCELLED}),
+        TaskStatus.RUNNING: frozenset({TaskStatus.WAITING, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED,}),
+        TaskStatus.WAITING: frozenset({TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.SKIPPED, TaskStatus.CANCELLED}),
         TaskStatus.COMPLETED: frozenset(),
         TaskStatus.FAILED: frozenset(),
         TaskStatus.SKIPPED: frozenset(),
