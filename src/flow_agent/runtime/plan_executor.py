@@ -5,7 +5,7 @@ from flow_agent.domain import Run, RunEvent, RunEventKind, RunStatus, Task, Task
 from flow_agent.planning import materialize_tasks, ExecutionPlan
 
 Clock = Callable[[],float]
-Eventink = Callable[[RunEvent],None]
+EventSink = Callable[[RunEvent],None]
 TaskRunner = Callable[[Task],None]
 
 DEFAULT_MAX_RUN_SECONDS = 300.0
@@ -35,7 +35,7 @@ def execute_fixed_plan(
   *,
   max_run_seconds: float = DEFAULT_MAX_RUN_SECONDS,
   clock: Clock = perf_counter,
-  event_sink: Eventink | None = None
+  event_sink: EventSink | None = None
 ) -> Run:
   if run.status != RunStatus.PLANNING:
       raise ValueError("Run must be in PLANNING state")
@@ -169,7 +169,7 @@ def _emit_event(
   *, 
   run: Run,
   kind: RunEventKind,
-  event_sink: Eventink | None,
+  event_sink: EventSink | None,
   task_id: str | None = None,
   payload: dict | None = None  
 ) -> None:
@@ -191,7 +191,7 @@ def _ensure_within_run_budget(
   started_at: float,
   max_run_seconds: float,
   clock: Clock,
-  event_sink: Eventink | None
+  event_sink: EventSink | None
 ) -> None:
   elapsed = clock() - started_at
   

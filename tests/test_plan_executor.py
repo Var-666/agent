@@ -1,7 +1,10 @@
 import pytest
 
 from flow_agent.domain import (
+    Run,
+    RunEventKind,
     RunStatus,
+    Task,
     TaskStatus,
 )
 from flow_agent.planning.schema import (
@@ -10,6 +13,7 @@ from flow_agent.planning.schema import (
 )
 from flow_agent.runtime.plan_executor import (
     FixedPlanExecutionError,
+    RunTimeLimitExceeded,
     create_run_from_plan,
     execute_fixed_plan,
 )
@@ -221,10 +225,7 @@ def test_execute_fixed_plan_requires_planning_run(
             run,
             lambda task: None,
         )
-        
-from flow_agent.domain import Run
-
-
+      
 def test_execute_fixed_plan_rejects_queued_run():
     run = Run(
         goal_id="goal-001"
@@ -239,7 +240,6 @@ def test_execute_fixed_plan_rejects_queued_run():
             lambda task: None,
         )
         
-from flow_agent.domain import Task
 def test_fixed_plan_waits_for_dependencies():
     dependency = Task(
         title="Dependency",
@@ -286,6 +286,299 @@ def test_fixed_plan_waits_for_dependencies():
 
     assert (
         run.status
+        == RunStatus.COMPLETED
+    )
+    
+def test_execute_fixed_plan_records_events():
+    run = create_run_from_plan(
+        make_plan()
+    )
+
+    events = []
+
+    execute_fixed_plan(
+        run,
+        lambda task: None,
+        event_sink=events.append,
+        clock=lambda: 0.0,
+    )
+
+    assert [
+        event.kind
+        for event in events
+    ] == [
+        RunEventKind.RUN_STARTED,
+        RunEventKind.TASK_STARTED,
+        RunEventKind.TASK_COMPLETED,
+        RunEventKind.TASK_STARTED,
+        RunEventKind.TASK_COMPLETED,
+        RunEventKind.RUN_COMPLETED,
+    ]
+    
+    assert events[0].run_id == run.id
+    assert events[0].task_id is None
+
+    assert events[1].task_id == (
+        run.tasks[0].id
+    )
+
+    assert events[2].task_id == (
+        run.tasks[0].id
+    )
+
+    assert events[3].task_id == (
+        run.tasks[1].id
+    )
+
+    assert events[4].task_id == (
+        run.tasks[1].id
+    )
+
+    assert events[5].task_id is None
+    
+    assert all(
+    event.run_id == run.id
+    for event in events
+    )
+    
+def test_execute_fixed_plan_records_failure_events():
+    run = create_run_from_plan(
+        make_plan()
+    )
+
+    events = []
+
+    def task_runner(task):
+        raise RuntimeError(
+            "provider failed"
+        )
+
+    with pytest.raises(
+        FixedPlanExecutionError
+    ):
+        execute_fixed_plan(
+            run,
+            task_runner,
+            event_sink=events.append,
+            clock=lambda: 0.0,
+        )
+
+    assert [
+        event.kind
+        for event in events
+    ] == [
+        RunEventKind.RUN_STARTED,
+        RunEventKind.TASK_STARTED,
+        RunEventKind.TASK_FAILED,
+        RunEventKind.RUN_FAILED,
+    ]
+    
+    task_failed = events[-2]
+
+    assert (
+        task_failed.task_id
+        == run.tasks[0].id
+    )
+
+    assert task_failed.payload == {
+        "error_type": "RuntimeError",
+        "error": "provider failed",
+    }
+    
+    run_failed = events[-1]
+
+    assert (
+        run_failed.payload["reason"]
+        == "task_failed"
+    )
+
+    assert (
+        run_failed.payload["task_id"]
+        == run.tasks[0].id
+    )
+
+def test_execute_fixed_plan_stops_when_run_time_expires():
+    run = create_run_from_plan(
+        make_plan()
+    )
+
+    executed = []
+    events = []
+
+    ticks = iter(
+        [
+            0.0,
+            0.0,
+            2.0,
+        ]
+    )
+
+    def task_runner(task):
+        executed.append(
+            task.title
+        )
+
+    with pytest.raises(
+        RunTimeLimitExceeded
+    ):
+        execute_fixed_plan(
+            run,
+            task_runner,
+            max_run_seconds=1.0,
+            clock=lambda: next(ticks),
+            event_sink=events.append,
+        )
+        
+    assert (
+    run.tasks[0].status
+    == TaskStatus.COMPLETED
+    )
+
+    assert (
+        run.tasks[1].status
+        == TaskStatus.PENDING
+    )
+    
+    assert (
+    run.status
+    == RunStatus.FAILED
+    )
+
+    assert (
+        events[-1].kind
+        == RunEventKind.RUN_FAILED
+    )
+
+    assert events[-1].payload == {
+        "reason": "time_limit_exceeded",
+        "max_run_seconds": 1.0,
+        "elapsed_seconds": 2.0,
+    }
+
+def test_run_time_limit_prevents_first_task():
+    run = create_run_from_plan(
+        make_plan()
+    )
+
+    executed = []
+    events = []
+
+    ticks = iter(
+        [
+            0.0,
+            1.0,
+        ]
+    )
+
+    with pytest.raises(
+        RunTimeLimitExceeded
+    ):
+        execute_fixed_plan(
+            run,
+            lambda task:
+                executed.append(
+                    task.title
+                ),
+            max_run_seconds=1.0,
+            clock=lambda: next(ticks),
+            event_sink=events.append,
+        )
+        
+def test_run_time_limit_is_checked_after_last_task():
+    plan = ExecutionPlan(
+        goal_id="goal-001",
+        summary="One task",
+        tasks=(
+            PlanTask(
+                key="only",
+                title="Only task",
+                description="Do work",
+            ),
+        ),
+    )
+
+    run = create_run_from_plan(
+        plan
+    )
+
+    executed = []
+    events = []
+
+    ticks = iter(
+        [
+            0.0,  # start
+            0.0,  # before task
+            2.0,  # after final task
+        ]
+    )
+
+    with pytest.raises(
+        RunTimeLimitExceeded
+    ):
+        execute_fixed_plan(
+            run,
+            lambda task:
+                executed.append(
+                    task.title
+                ),
+            max_run_seconds=1.0,
+            clock=lambda: next(ticks),
+            event_sink=events.append,
+        )
+        
+    assert (
+    RunEventKind.RUN_COMPLETED
+    not in {
+        event.kind
+        for event in events
+    }
+    )
+
+    assert (
+        events[-1].kind
+        == RunEventKind.RUN_FAILED
+    )
+    
+@pytest.mark.parametrize(
+    "max_run_seconds",
+    [
+        0,
+        -1,
+        -0.5,
+    ],
+)
+def test_execute_fixed_plan_rejects_invalid_run_budget(
+    max_run_seconds,
+):
+    run = create_run_from_plan(
+        make_plan()
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="max_run_seconds",
+    ):
+        execute_fixed_plan(
+            run,
+            lambda task: None,
+            max_run_seconds=(
+                max_run_seconds
+            ),
+        )
+        
+def test_execute_fixed_plan_does_not_require_event_sink():
+    run = create_run_from_plan(
+        make_plan()
+    )
+
+    result = execute_fixed_plan(
+        run,
+        lambda task: None,
+        clock=lambda: 0.0,
+    )
+
+    assert (
+        result.status
         == RunStatus.COMPLETED
     )
     
